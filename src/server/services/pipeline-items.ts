@@ -129,6 +129,33 @@ function mapRowToItem(row: PipelineItemRow): PipelineSeedItem {
   };
 }
 
+function upsertMemoryItem(
+  module: PipelineModule,
+  item: Pick<PipelineSeedItem, "id" | "title" | "stage"> & Partial<PipelineSeedItem>
+) {
+  const memoryItems = getMemoryItems(module);
+  const existing = memoryItems.find((entry) => entry.id === item.id);
+
+  if (existing) {
+    existing.title = item.title;
+    existing.stage = item.stage;
+    existing.subtitle = item.subtitle;
+    existing.assignee = item.assignee;
+    return existing;
+  }
+
+  const nextItem: PipelineSeedItem = {
+    id: item.id,
+    title: item.title,
+    stage: item.stage,
+    subtitle: item.subtitle,
+    assignee: item.assignee,
+  };
+
+  memoryItems.push(nextItem);
+  return nextItem;
+}
+
 export async function listPipelineItems(module: PipelineModule) {
   const fallback = getMemoryItems(module);
   const pipelineItemDelegate = getPipelineItemDelegate();
@@ -205,7 +232,12 @@ export async function persistPipelineTransition(input: PersistTransitionInput) {
       },
     });
   } catch {
-    // Ignore persistence failures when DB is not configured.
+    upsertMemoryItem(input.module, {
+      id: input.entityId,
+      title: input.title ?? input.entityId,
+      subtitle: input.subtitle,
+      stage: input.to,
+    });
   }
 }
 
@@ -258,14 +290,13 @@ export async function createPipelineItem(module: PipelineModule, input: CreatePi
       stage: input.stage,
     };
   } catch {
-    const memoryItems = getMemoryItems(module);
-    const item = {
+    const item = upsertMemoryItem(module, {
       id: entityId,
       title: input.title,
       subtitle: input.subtitle,
       stage: input.stage,
-    };
-    memoryItems.push(item);
+      assignee: input.assignee,
+    });
     return item;
   }
 }
@@ -352,7 +383,30 @@ export async function updatePipelineItem(
       stage: next.stage,
     };
   } catch {
-    return null;
+    const memoryItems = getMemoryItems(module);
+    const existing = memoryItems.find((item) => item.id === entityId);
+
+    if (!existing) {
+      return null;
+    }
+
+    if (input.title !== undefined) {
+      existing.title = input.title;
+    }
+
+    if (input.subtitle !== undefined) {
+      existing.subtitle = input.subtitle;
+    }
+
+    if (input.stage !== undefined) {
+      existing.stage = input.stage;
+    }
+
+    if (input.assignee !== undefined) {
+      existing.assignee = input.assignee;
+    }
+
+    return existing;
   }
 }
 
@@ -390,6 +444,14 @@ export async function deletePipelineItem(module: PipelineModule, entityId: strin
 
     return true;
   } catch {
-    return false;
+    const memoryItems = getMemoryItems(module);
+    const index = memoryItems.findIndex((item) => item.id === entityId);
+
+    if (index === -1) {
+      return false;
+    }
+
+    memoryItems.splice(index, 1);
+    return true;
   }
 }

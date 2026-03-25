@@ -3,6 +3,48 @@
 import { useEffect, useState, type DragEvent, type FormEvent } from "react";
 import type { PipelineModule, PipelineSeedItem } from "@/lib/pipeline-seeds";
 
+const STORAGE_PREFIX = "dashboard_pipeline_items";
+
+function getStorageKey(module: PipelineModule) {
+  return `${STORAGE_PREFIX}_${module}`;
+}
+
+function loadStoredItems(module: PipelineModule): PipelineSeedItem[] | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getStorageKey(module));
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+
+    return parsed as PipelineSeedItem[];
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredItems(module: PipelineModule, items: PipelineSeedItem[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(getStorageKey(module), JSON.stringify(items));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 type PipelineDefinition = {
   module: PipelineModule;
   title: string;
@@ -24,6 +66,7 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
   const [items, setItems] = useState(initialItems);
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
   const [message, setMessage] = useState<string>("Loading pipeline...");
+  const [storageReady, setStorageReady] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newSubtitle, setNewSubtitle] = useState("");
   const [newStage, setNewStage] = useState("");
@@ -36,6 +79,14 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
 
   useEffect(() => {
     const run = async () => {
+      const storedItems = loadStoredItems(module);
+
+      if (storedItems) {
+        setItems(storedItems);
+      } else {
+        setItems(initialItems);
+      }
+
       try {
         const [definitionResponse, itemsResponse] = await Promise.all([
           fetch(`/api/pipelines/${module}`),
@@ -56,7 +107,7 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
             data?: PipelineSeedItem[];
           };
 
-          if (itemsJson.data) {
+          if (itemsJson.data && !storedItems) {
             setItems(itemsJson.data);
           }
         }
@@ -65,12 +116,26 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
         setNewStage(definitionJson.data.defaultStage);
         setMessage("Drag a card to move between stages.");
       } catch {
-        setMessage("Could not load pipeline");
+        if (storedItems) {
+          setMessage("Working from locally saved data.");
+        } else {
+          setMessage("Could not load pipeline");
+        }
+      } finally {
+        setStorageReady(true);
       }
     };
 
     void run();
-  }, [module]);
+  }, [initialItems, module]);
+
+  useEffect(() => {
+    if (!storageReady) {
+      return;
+    }
+
+    saveStoredItems(module, items);
+  }, [items, module, storageReady]);
 
   async function handleDrop(targetStage: string, event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -87,29 +152,43 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       return;
     }
 
-    const response = await fetch("/api/pipelines/transition", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        module,
-        from: fromStage,
-        to: targetStage,
-        entityType: definition.entityType,
-        entityId: card.id,
-        metadata: {
-          title: card.title,
-        },
-      }),
-    });
+    const nextItems = items.map((item) => (item.id === cardId ? { ...item, stage: targetStage } : item));
 
-    const json = (await response.json()) as { error?: string };
-
-    if (!response.ok) {
-      setMessage(json.error ?? "Transition failed");
+    if (!definition.allowedTransitions[fromStage]?.includes(targetStage)) {
+      setMessage(`Transition '${fromStage}' -> '${targetStage}' is not allowed.`);
       return;
     }
 
-    setItems((current) => current.map((item) => (item.id === cardId ? { ...item, stage: targetStage } : item)));
+    try {
+      const response = await fetch("/api/pipelines/transition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module,
+          from: fromStage,
+          to: targetStage,
+          entityType: definition.entityType,
+          entityId: card.id,
+          metadata: {
+            title: card.title,
+          },
+        }),
+      });
+
+      const json = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        setItems(nextItems);
+        setMessage(json.error ?? `${card.title} moved locally to ${targetStage}.`);
+        return;
+      }
+    } catch {
+      setItems(nextItems);
+      setMessage(`${card.title} moved locally to ${targetStage}.`);
+      return;
+    }
+
+    setItems(nextItems);
     setMessage(`${card.title} moved from ${fromStage} to ${targetStage}.`);
   }
 
@@ -120,30 +199,44 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       return;
     }
 
-    const response = await fetch(`/api/pipelines/${module}/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: newTitle.trim(),
-        subtitle: newSubtitle.trim() || undefined,
-        stage: newStage || definition.defaultStage,
-        assignee: newAssignee || undefined,
-      }),
-    });
+    const localItem: PipelineSeedItem = {
+      id: `${module}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: newTitle.trim(),
+      subtitle: newSubtitle.trim() || undefined,
+      stage: newStage || definition.defaultStage,
+      assignee: newAssignee || undefined,
+    };
 
-    const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
+    try {
+      const response = await fetch(`/api/pipelines/${module}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          subtitle: newSubtitle.trim() || undefined,
+          stage: newStage || definition.defaultStage,
+          assignee: newAssignee || undefined,
+        }),
+      });
 
-    if (!response.ok || !json.data) {
-      setMessage(json.error ?? "Failed to create card");
-      return;
+      const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
+
+      if (!response.ok || !json.data) {
+        setItems((current) => [...current, localItem]);
+        setMessage(json.error ?? `Created ${localItem.title} locally.`);
+      } else {
+        setItems((current) => [...current, json.data as PipelineSeedItem]);
+        setMessage(`Created ${json.data.title}.`);
+      }
+    } catch {
+      setItems((current) => [...current, localItem]);
+      setMessage(`Created ${localItem.title} locally.`);
     }
 
-    setItems((current) => [...current, json.data as PipelineSeedItem]);
     setNewTitle("");
     setNewSubtitle("");
     setNewStage(definition.defaultStage);
     setNewAssignee("");
-    setMessage(`Created ${json.data.title}.`);
   }
 
   function startEdit(item: PipelineSeedItem) {
@@ -160,38 +253,69 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       return;
     }
 
-    const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: editTitle.trim(),
-        subtitle: editSubtitle.trim() || undefined,
-        stage: editStage,
-        assignee: editAssignee || undefined,
-      }),
-    });
+    const localItem: PipelineSeedItem = {
+      id: itemId,
+      title: editTitle.trim(),
+      subtitle: editSubtitle.trim() || undefined,
+      stage: editStage,
+      assignee: editAssignee || undefined,
+    };
 
-    const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
+    try {
+      const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          subtitle: editSubtitle.trim() || undefined,
+          stage: editStage,
+          assignee: editAssignee || undefined,
+        }),
+      });
 
-    if (!response.ok || !json.data) {
-      setMessage(json.error ?? "Failed to update card");
+      const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
+
+      if (!response.ok || !json.data) {
+        setItems((current) => current.map((item) => (item.id === itemId ? localItem : item)));
+        setEditingId(null);
+        setMessage(json.error ?? `Updated ${localItem.title} locally.`);
+        return;
+      }
+
+      setItems((current) => current.map((item) => (item.id === itemId ? (json.data as PipelineSeedItem) : item)));
+      setEditingId(null);
+      setMessage(`Updated ${json.data.title}.`);
+      return;
+    } catch {
+      setItems((current) => current.map((item) => (item.id === itemId ? localItem : item)));
+      setEditingId(null);
+      setMessage(`Updated ${localItem.title} locally.`);
       return;
     }
-
-    setItems((current) => current.map((item) => (item.id === itemId ? (json.data as PipelineSeedItem) : item)));
-    setEditingId(null);
-    setMessage(`Updated ${json.data.title}.`);
   }
 
   async function deleteCard(itemId: string) {
-    const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
-      method: "DELETE",
-    });
+    try {
+      const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
+        method: "DELETE",
+      });
 
-    const json = (await response.json()) as { error?: string };
+      const json = (await response.json()) as { error?: string };
 
-    if (!response.ok) {
-      setMessage(json.error ?? "Failed to delete card");
+      if (!response.ok) {
+        setItems((current) => current.filter((item) => item.id !== itemId));
+        if (editingId === itemId) {
+          setEditingId(null);
+        }
+        setMessage(json.error ?? "Card deleted locally.");
+        return;
+      }
+    } catch {
+      setItems((current) => current.filter((item) => item.id !== itemId));
+      if (editingId === itemId) {
+        setEditingId(null);
+      }
+      setMessage("Card deleted locally.");
       return;
     }
 
