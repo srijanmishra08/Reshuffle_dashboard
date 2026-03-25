@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  FREELANCER
+}
+
+enum PipelineStage {
+  LEAD
+  CONTACTED
+  CONVERTED
+  RETAINED
+}
+
+enum GenericStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
+  ACTIVE
+  ARCHIVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DealTemperature {
+  COLD
+  WARM
+  HOT
+}
+
+enum FinanceType {
+  REVENUE
+  EXPENSE
+  PAYOUT
+  SUBSCRIPTION
+}
+
+enum EventStatus {
+  PLANNED
+  CONFIRMED
+  EXECUTED
+  CANCELLED
+}
+
+model User {
+  id         String      @id @default(cuid())
+  name       String
+  email      String      @unique
+  role       UserRole    @default(MANAGER)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  tasks      Task[]      @relation("AssignedTasks")
+  activities Activity[]
+}
+
+model Client {
+  id           String          @id @default(cuid())
+  name         String
+  company      String?
+  contactInfo  Json?
+  stage        PipelineStage   @default(LEAD)
+  status       GenericStatus   @default(ACTIVE)
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  projects     Project[]
+  deals        Deal[]
+  contentItems Content[]
+  finance      FinanceRecord[]
+  events       Event[]
+  documents    Document[]
+}
+
+model Project {
+  id             String          @id @default(cuid())
+  clientId       String
+  name           String
+  description    String?
+  status         GenericStatus   @default(TODO)
+  deadline       DateTime?
+  sprint         String?
+  versionLabel   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+  assignments    FreelancerProject[]
+  contentItems   Content[]
+  finance        FinanceRecord[]
+  events         Event[]
+  documents      Document[]
+}
+
+model Task {
+  id          String        @id @default(cuid())
+  projectId   String
+  assignedTo  String?
+  title       String
+  details     String?
+  status      GenericStatus @default(TODO)
+  priority    Priority      @default(MEDIUM)
+  dueDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee    User?         @relation("AssignedTasks", fields: [assignedTo], references: [id], onDelete: SetNull)
+}
+
+model Freelancer {
+  id            String              @id @default(cuid())
+  name          String
+  email         String?             @unique
+  skillTags     String[]
+  availability  GenericStatus       @default(ACTIVE)
+  rating        Float               @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  assignments   FreelancerProject[]
+  payouts       FinanceRecord[]
+}
+
+model FreelancerProject {
+  freelancerId String
+  projectId    String
+  role         String?
+  status       GenericStatus @default(ACTIVE)
+  allocatedAt  DateTime      @default(now())
+  freelancer   Freelancer    @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([freelancerId, projectId])
+}
+
+model Deal {
+  id            String          @id @default(cuid())
+  clientId      String
+  source        String?
+  temperature   DealTemperature @default(COLD)
+  stage         PipelineStage   @default(LEAD)
+  value         Decimal         @db.Decimal(12, 2)
+  lastContacted DateTime?
+  nextFollowUp  DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  client        Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Content {
+  id          String        @id @default(cuid())
+  clientId    String?
+  projectId   String?
+  platform    String
+  title       String
+  postDate    DateTime?
+  status      GenericStatus @default(TODO)
+  aiCaption   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  client      Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model FinanceRecord {
+  id            String       @id @default(cuid())
+  clientId      String?
+  projectId     String?
+  freelancerId  String?
+  type          FinanceType
+  amount        Decimal      @db.Decimal(12, 2)
+  currency      String       @default("INR")
+  note          String?
+  recordDate    DateTime
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  client        Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project       Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  freelancer    Freelancer?  @relation(fields: [freelancerId], references: [id], onDelete: SetNull)
+}
+
+model Event {
+  id            String        @id @default(cuid())
+  clientId       String?
+  projectId      String?
+  name           String
+  eventDate      DateTime
+  location       String?
+  status         EventStatus   @default(PLANNED)
+  attendeeCount  Int           @default(0)
+  revenue        Decimal       @default(0) @db.Decimal(12, 2)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  client         Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model Document {
+  id          String      @id @default(cuid())
+  clientId    String?
+  projectId   String?
+  title       String
+  entityType  String
+  entityId    String
+  url         String
+  version     Int         @default(1)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  client      Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model Activity {
+  id          String    @id @default(cuid())
+  actorId     String?
+  action      String
+  module      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  actor       User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([module, createdAt])
+}
+
+model AutomationRule {
+  id          String      @id @default(cuid())
+  name        String
+  trigger     String
+  condition   Json?
+  action      Json
+  enabled     Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model PipelineItem {
+  id         String   @id @default(cuid())
+  module     String
+  entityType String
+  entityId   String
+  title      String
+  subtitle   String?
+  stage      String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([module, entityId])
+  @@index([module, stage])
+}

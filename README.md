@@ -1,36 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReShuffle Dashboard
 
-## Getting Started
+ReShuffle Dashboard is a full-stack Business Operating System scaffold built with a modular architecture.
 
-First, run the development server:
+## Stack
+
+- Frontend: Next.js (App Router) + TailwindCSS
+- API: Next.js Route Handlers + tRPC endpoint scaffold
+- ORM / DB: Prisma + PostgreSQL
+- Queue and workers: BullMQ + Redis
+- Validation: Zod
+
+## Modules Included
+
+1. Client CRM
+2. Project Management Dashboard
+3. Social Media Planning and Calendar
+4. Client Outreach Tracker
+5. App Development Cycle
+6. Freelancers Status Board
+7. Finance Sheet
+8. Event Dashboard
+9. Documentation System
+
+## Quick Start
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy environment file:
+
+```bash
+cp .env.example .env
+```
+
+3. Generate Prisma client:
+
+```bash
+npm run prisma:generate
+```
+
+4. Run database migrations:
+
+```bash
+npm run prisma:migrate
+```
+
+5. Start web app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+6. Start automation worker (separate terminal):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run worker:automation
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## API Endpoints (Initial)
 
-## Learn More
+- `GET /api/health`
+- `GET|POST /api/clients`
+- `GET|POST /api/projects`
+- `GET|POST /api/tasks`
+- `GET /api/activity?limit=20`
+- `POST /api/automation/trigger`
+- `GET|POST /api/trpc/[trpc]`
 
-To learn more about Next.js, take a look at the following resources:
+## Important Paths
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Prisma schema: `prisma/schema.prisma`
+- Module pages: `src/app/*/page.tsx`
+- REST APIs: `src/app/api/*`
+- Business services: `src/server/services/*`
+- Worker: `src/workers/automation-worker.ts`
+- Architecture docs: `docs/*`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deployment Targets
 
-## Deploy on Vercel
+- App: Vercel
+- PostgreSQL: Supabase or Neon
+- Redis: Upstash
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Next Build Steps
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Add authentication and role guards for Admin, Manager, Freelancer.
+2. Replace mock module panels with live data queries and mutation forms.
+3. Add queue processors for WhatsApp, email, and social integrations.
+4. Add notification center and global search.
