@@ -15,6 +15,8 @@ export type PipelineSeedItem = {
   stage: string;
   subtitle?: string;
   assignee?: string;
+  phone?: string;
+  email?: string;
 };
 
 export const pipelineSeedItems: Record<PipelineModule, PipelineSeedItem[]> = {

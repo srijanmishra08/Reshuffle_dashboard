@@ -63,17 +63,22 @@ type PipelineBoardProps = {
 };
 
 export function PipelineBoard({ module, initialItems, assignees }: PipelineBoardProps) {
+  const supportsClientContact = module === "crm" || module === "outreach";
   const [items, setItems] = useState(initialItems);
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
   const [message, setMessage] = useState<string>("Loading pipeline...");
   const [storageReady, setStorageReady] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newSubtitle, setNewSubtitle] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [newStage, setNewStage] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editSubtitle, setEditSubtitle] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editStage, setEditStage] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
 
@@ -171,6 +176,10 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
           entityId: card.id,
           metadata: {
             title: card.title,
+            subtitle: card.subtitle,
+            assignee: card.assignee,
+            phone: card.phone,
+            email: card.email,
           },
         }),
       });
@@ -205,6 +214,8 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       subtitle: newSubtitle.trim() || undefined,
       stage: newStage || definition.defaultStage,
       assignee: newAssignee || undefined,
+      phone: newPhone.trim() || undefined,
+      email: newEmail.trim() || undefined,
     };
 
     try {
@@ -216,6 +227,11 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
           subtitle: newSubtitle.trim() || undefined,
           stage: newStage || definition.defaultStage,
           assignee: newAssignee || undefined,
+          metadata: {
+            assignee: newAssignee || undefined,
+            phone: newPhone.trim() || undefined,
+            email: newEmail.trim() || undefined,
+          },
         }),
       });
 
@@ -235,6 +251,8 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
 
     setNewTitle("");
     setNewSubtitle("");
+    setNewPhone("");
+    setNewEmail("");
     setNewStage(definition.defaultStage);
     setNewAssignee("");
   }
@@ -243,6 +261,8 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
     setEditingId(item.id);
     setEditTitle(item.title);
     setEditSubtitle(item.subtitle ?? "");
+    setEditPhone(item.phone ?? "");
+    setEditEmail(item.email ?? "");
     setEditStage(item.stage);
     setEditAssignee(item.assignee ?? "");
   }
@@ -259,6 +279,8 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       subtitle: editSubtitle.trim() || undefined,
       stage: editStage,
       assignee: editAssignee || undefined,
+      phone: editPhone.trim() || undefined,
+      email: editEmail.trim() || undefined,
     };
 
     try {
@@ -270,6 +292,11 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
           subtitle: editSubtitle.trim() || undefined,
           stage: editStage,
           assignee: editAssignee || undefined,
+          metadata: {
+            assignee: editAssignee || undefined,
+            phone: editPhone.trim() || undefined,
+            email: editEmail.trim() || undefined,
+          },
         }),
       });
 
@@ -339,7 +366,7 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       </div>
 
       <form onSubmit={handleCreateCard} className="mb-4 flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <div className="grid gap-2 md:grid-cols-5">
+        <div className="grid gap-2 md:grid-cols-7">
           <input
             value={newTitle}
             onChange={(event) => setNewTitle(event.target.value)}
@@ -352,6 +379,23 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
             placeholder="Subtitle (optional)"
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 md:col-span-2"
           />
+          {supportsClientContact && (
+            <>
+              <input
+                value={newPhone}
+                onChange={(event) => setNewPhone(event.target.value)}
+                placeholder="Phone"
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              />
+              <input
+                value={newEmail}
+                onChange={(event) => setNewEmail(event.target.value)}
+                placeholder="Email"
+                type="email"
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              />
+            </>
+          )}
           <div className="flex gap-2">
             <select
               value={newStage}
@@ -427,6 +471,23 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
                           placeholder="Subtitle"
                           className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
                         />
+                        {supportsClientContact && (
+                          <>
+                            <input
+                              value={editPhone}
+                              onChange={(event) => setEditPhone(event.target.value)}
+                              placeholder="Phone"
+                              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                            />
+                            <input
+                              value={editEmail}
+                              onChange={(event) => setEditEmail(event.target.value)}
+                              placeholder="Email"
+                              type="email"
+                              className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                            />
+                          </>
+                        )}
                         {assignees && assignees.length > 0 && (
                           <select
                             value={editAssignee}
@@ -471,6 +532,12 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
                       <>
                         <p className="text-sm font-medium text-slate-800">{item.title}</p>
                         {item.subtitle ? <p className="mt-1 text-xs text-slate-500">{item.subtitle}</p> : null}
+                        {supportsClientContact && item.phone ? (
+                          <p className="mt-1 text-xs text-slate-500">Phone: {item.phone}</p>
+                        ) : null}
+                        {supportsClientContact && item.email ? (
+                          <p className="mt-1 text-xs text-slate-500">Email: {item.email}</p>
+                        ) : null}
                         {item.assignee ? (
                           <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
                             <span>👤</span> {item.assignee}
