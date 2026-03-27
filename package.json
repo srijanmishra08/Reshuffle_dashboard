@@ -13,6 +13,7 @@
     "worker:automation": "tsx src/workers/automation-worker.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.2",
     "@prisma/client": "^6.19.2",
     "@supabase/supabase-js": "^2.100.0",
     "@tanstack/react-query": "^5.95.2",

@@ -67,6 +67,8 @@ npm run worker:automation
 - `GET|POST /api/projects`
 - `GET|POST /api/tasks`
 - `GET /api/activity?limit=20`
+- `GET|POST /api/social/entries`
+- `PATCH|DELETE /api/social/entries/:id`
 - `POST /api/automation/trigger`
 - `GET|POST /api/trpc/[trpc]`
 
@@ -84,6 +86,24 @@ npm run worker:automation
 - App: Vercel
 - PostgreSQL: Supabase or Neon
 - Redis: Upstash
+
+## Shared Persistence on Vercel
+
+To make edits/additions visible to every user and persistent across deploys:
+
+1. Provision a Turso database and generate an auth token.
+2. In Vercel project settings, set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+3. Configure PostgreSQL (`DATABASE_URL`, `DIRECT_URL`) only if you still need legacy Prisma tooling.
+4. (Optional for queues) set `REDIS_URL`.
+5. If you are also using Prisma-backed modules, run Prisma migrations against your PostgreSQL database:
+
+```bash
+npm run prisma:migrate
+```
+
+6. Redeploy the app.
+
+The app APIs now read/write through Turso-backed storage for shared, persistent data across users on the Vercel link.
 
 ## Next Build Steps
 

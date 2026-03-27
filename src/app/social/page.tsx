@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 type Platform = "Instagram" | "LinkedIn" | "YouTube" | "X" | "Facebook";
@@ -47,19 +47,15 @@ function toDateKey(value: Date) {
 const today = new Date();
 const todayKey = toDateKey(today);
 
-const SEED_ENTRIES: CalendarEntry[] = [
-  { id: "sc-1", title: "Founder Story Reel",     script: "Narrate the origin story with a strong CTA at the end.", platform: "Instagram", date: todayKey, status: "SCHEDULED" },
-  { id: "sc-2", title: "Case Study Carousel",     script: "Break down a client win across 6 slides. End with results.",  platform: "LinkedIn",  date: todayKey, status: "DRAFT" },
-  { id: "sc-3", title: "Product Feature Walkthrough", script: "Screen-record the new pipeline view and add voiceover.", platform: "YouTube", date: (() => { const d = new Date(today); d.setDate(d.getDate() + 3); return toDateKey(d); })(), status: "IDEA" },
-];
-
 export default function SocialPage() {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, "0")}`;
 
   const [selectedMonth,  setSelectedMonth]  = useState(defaultMonth);
-  const [entries,        setEntries]        = useState<CalendarEntry[]>(SEED_ENTRIES);
+  const [entries,        setEntries]        = useState<CalendarEntry[]>([]);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(todayKey);
+  const [isLoading,      setIsLoading]      = useState(true);
+  const [requestError,   setRequestError]   = useState<string | null>(null);
 
   // add-form state
   const [title,    setTitle]    = useState("");
@@ -67,6 +63,42 @@ export default function SocialPage() {
   const [platform, setPlatform] = useState<Platform>("Instagram");
   const [date,     setDate]     = useState(todayKey);
   const [status,   setStatus]   = useState<Status>("IDEA");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadEntries() {
+      setIsLoading(true);
+      setRequestError(null);
+
+      try {
+        const response = await fetch("/api/social/entries", { cache: "no-store" });
+        const payload = (await response.json()) as { data?: CalendarEntry[]; error?: string };
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Unable to load social entries");
+        }
+
+        if (isMounted) {
+          setEntries(Array.isArray(payload.data) ? payload.data : []);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setRequestError(error instanceof Error ? error.message : "Unable to load social entries");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadEntries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // calendar grid
   const { calendarCells, year, monthIndex } = useMemo(() => {
@@ -98,29 +130,90 @@ export default function SocialPage() {
     setSelectedMonth(`${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, "0")}`);
   }
 
-  function handleAdd(event: FormEvent<HTMLFormElement>) {
+  async function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!title.trim() || !date) return;
 
-    setEntries((cur) => [
-      ...cur,
-      { id: `sc-${Date.now()}`, title: title.trim(), script: script.trim(), platform, date, status },
-    ]);
-    setTitle("");
-    setScript("");
+    setRequestError(null);
+
+    try {
+      const response = await fetch("/api/social/entries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          script: script.trim(),
+          platform,
+          date,
+          status,
+        }),
+      });
+
+      const payload = (await response.json()) as { data?: CalendarEntry; error?: string };
+
+      if (!response.ok || !payload.data) {
+        throw new Error(payload.error ?? "Unable to create content entry");
+      }
+
+      setEntries((cur) => [...cur, payload.data]);
+      setTitle("");
+      setScript("");
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Unable to create content entry");
+    }
   }
 
-  function deleteEntry(id: string) {
-    setEntries((cur) => cur.filter((e) => e.id !== id));
+  async function deleteEntry(id: string) {
+    setRequestError(null);
+
+    try {
+      const response = await fetch(`/api/social/entries/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? "Unable to delete content entry");
+      }
+
+      setEntries((cur) => cur.filter((e) => e.id !== id));
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Unable to delete content entry");
+    }
   }
 
-  function cycleStatus(id: string) {
+  async function cycleStatus(id: string) {
     const order: Status[] = ["IDEA", "DRAFT", "SCHEDULED", "POSTED"];
-    setEntries((cur) =>
-      cur.map((e) =>
-        e.id === id ? { ...e, status: order[(order.indexOf(e.status) + 1) % order.length] } : e
-      )
-    );
+    const target = entries.find((entry) => entry.id === id);
+
+    if (!target) {
+      return;
+    }
+
+    const nextStatus = order[(order.indexOf(target.status) + 1) % order.length];
+    setRequestError(null);
+
+    try {
+      const response = await fetch(`/api/social/entries/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      const payload = (await response.json()) as { data?: CalendarEntry; error?: string };
+
+      if (!response.ok || !payload.data) {
+        throw new Error(payload.error ?? "Unable to update entry status");
+      }
+
+      setEntries((cur) => cur.map((entry) => (entry.id === id ? payload.data! : entry)));
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Unable to update entry status");
+    }
   }
 
   const selectedDayEntries = selectedDayKey ? entries.filter((e) => e.date === selectedDayKey) : [];
@@ -141,6 +234,9 @@ export default function SocialPage() {
         onSubmit={handleAdd}
         className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
       >
+        {requestError ? (
+          <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{requestError}</p>
+        ) : null}
         <h3 className="mb-3 text-sm font-semibold text-slate-700">New Content Entry</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <input
@@ -198,6 +294,9 @@ export default function SocialPage() {
 
       {/* ── Calendar grid ── */}
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        {isLoading ? (
+          <p className="mb-4 text-sm text-slate-500">Loading shared content...</p>
+        ) : null}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button type="button" onClick={prevMonth} className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-100">‹</button>

@@ -1,57 +1,6 @@
-import { db } from "@/lib/db";
+import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
 import { pipelineSeedItems, type PipelineSeedItem } from "@/lib/pipeline-seeds";
 import type { PipelineModule } from "@/server/models/pipeline";
-
-type PipelineItemRow = {
-  entityId: string;
-  title: string;
-  subtitle: string | null;
-  stage: string;
-  metadata: unknown;
-};
-
-type PipelineItemDelegate = {
-  count(args: { where: { module: string } }): Promise<number>;
-  createMany(args: {
-    data: Array<{
-      module: string;
-      entityType: string;
-      entityId: string;
-      title: string;
-      subtitle?: string;
-      stage: string;
-      metadata: Record<string, unknown> | null;
-    }>;
-  }): Promise<unknown>;
-  findMany(args: {
-    where: { module: string };
-    orderBy: { createdAt: "asc" | "desc" };
-  }): Promise<PipelineItemRow[]>;
-  upsert(args: {
-    where: {
-      module_entityId: {
-        module: string;
-        entityId: string;
-      };
-    };
-    create: {
-      module: string;
-      entityType: string;
-      entityId: string;
-      title: string;
-      subtitle?: string;
-      stage: string;
-      metadata: Record<string, unknown> | null;
-    };
-    update: {
-      stage: string;
-      title?: string;
-      subtitle?: string;
-      metadata?: Record<string, unknown>;
-    };
-  }): Promise<unknown>;
-  deleteMany(args: { where: { module: string; entityId: string } }): Promise<unknown>;
-};
 
 type PersistTransitionInput = {
   module: PipelineModule;
@@ -86,42 +35,6 @@ type UpdatePipelineItemInput = {
 };
 
 const memoryStore = new Map<PipelineModule, PipelineSeedItem[]>();
-
-function seedToCreateData(module: PipelineModule, item: PipelineSeedItem) {
-  const metadata: Record<string, unknown> = {};
-
-  if (item.assignee) {
-    metadata.assignee = item.assignee;
-  }
-
-  if (item.phone) {
-    metadata.phone = item.phone;
-  }
-
-  if (item.email) {
-    metadata.email = item.email;
-  }
-
-  return {
-    module,
-    entityType: "pipeline_entity",
-    entityId: item.id,
-    title: item.title,
-    subtitle: item.subtitle,
-    stage: item.stage,
-    metadata: Object.keys(metadata).length > 0 ? metadata : null,
-  };
-}
-
-function getPipelineItemDelegate(): PipelineItemDelegate | null {
-  const candidate = (db as unknown as Record<string, unknown>)["pipelineItem"];
-
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  return candidate as PipelineItemDelegate;
-}
 
 function getMemoryItems(module: PipelineModule): PipelineSeedItem[] {
   const existing = memoryStore.get(module);
@@ -161,20 +74,6 @@ function readItemMetadata(metadata: unknown) {
   };
 }
 
-function mapRowToItem(row: PipelineItemRow): PipelineSeedItem {
-  const contact = readItemMetadata(row.metadata);
-
-  return {
-    id: row.entityId,
-    title: row.title,
-    subtitle: row.subtitle ?? undefined,
-    stage: row.stage,
-    assignee: contact.assignee,
-    phone: contact.phone,
-    email: contact.email,
-  };
-}
-
 function upsertMemoryItem(
   module: PipelineModule,
   item: Pick<PipelineSeedItem, "id" | "title" | "stage"> & Partial<PipelineSeedItem>
@@ -206,111 +105,149 @@ function upsertMemoryItem(
   return nextItem;
 }
 
-export async function listPipelineItems(module: PipelineModule) {
-  const fallback = getMemoryItems(module);
-  const pipelineItemDelegate = getPipelineItemDelegate();
+function toPipelineItem(row: Record<string, unknown>): PipelineSeedItem | null {
+  const metadataRaw = row.metadata;
+  let metadata: Record<string, unknown> | undefined;
 
-  if (!pipelineItemDelegate) {
-    return fallback;
+  if (typeof metadataRaw === "string" && metadataRaw.length > 0) {
+    try {
+      metadata = JSON.parse(metadataRaw) as Record<string, unknown>;
+    } catch {
+      metadata = undefined;
+    }
   }
 
-  try {
-    const count = await pipelineItemDelegate.count({ where: { module } });
+  const contact = readItemMetadata(metadata);
 
-    if (count === 0) {
-      await pipelineItemDelegate.createMany({
-        data: fallback.map((item) => seedToCreateData(module, item)),
+  const id = readString(row.entity_id);
+  const title = readString(row.title);
+  const stage = readString(row.stage);
+
+  if (!id || !title || !stage) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    subtitle: readString(row.subtitle),
+    stage,
+    assignee: contact.assignee,
+    phone: contact.phone,
+    email: contact.email,
+  };
+}
+
+async function listPipelineItemsFromTurso(module: PipelineModule): Promise<PipelineSeedItem[]> {
+  await ensureTursoSchema();
+  const client = getTursoClient();
+
+  const countResult = await client.execute({
+    sql: "SELECT COUNT(*) AS count FROM pipeline_items WHERE module = ?",
+    args: [module],
+  });
+
+  const countRow = countResult.rows[0] as Record<string, unknown> | undefined;
+  const count = Number(countRow?.count ?? 0);
+
+  if (count === 0) {
+    const seeds = getMemoryItems(module);
+
+    for (const item of seeds) {
+      const metadata: Record<string, unknown> = {};
+
+      if (item.assignee) metadata.assignee = item.assignee;
+      if (item.phone) metadata.phone = item.phone;
+      if (item.email) metadata.email = item.email;
+
+      await client.execute({
+        sql: `
+          INSERT INTO pipeline_items (id, module, entity_type, entity_id, title, subtitle, stage, metadata)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          crypto.randomUUID(),
+          module,
+          "pipeline_entity",
+          item.id,
+          item.title,
+          item.subtitle ?? null,
+          item.stage,
+          Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
+        ],
       });
     }
+  }
 
-    const rows = await pipelineItemDelegate.findMany({
-      where: { module },
-      orderBy: { createdAt: "asc" },
-    });
+  const result = await client.execute({
+    sql: `
+      SELECT entity_id, title, subtitle, stage, metadata
+      FROM pipeline_items
+      WHERE module = ?
+      ORDER BY created_at ASC
+    `,
+    args: [module],
+  });
 
-    return rows.map((row) => mapRowToItem(row));
+  return result.rows
+    .map((row) => toPipelineItem(row as Record<string, unknown>))
+    .filter((row): row is PipelineSeedItem => row !== null);
+}
+
+export async function listPipelineItems(module: PipelineModule) {
+  const fallback = getMemoryItems(module);
+
+  try {
+    return await listPipelineItemsFromTurso(module);
   } catch {
     return fallback;
   }
 }
 
 export async function persistPipelineTransition(input: PersistTransitionInput) {
-  const pipelineItemDelegate = getPipelineItemDelegate();
-
-  if (!pipelineItemDelegate) {
-    const memoryItems = getMemoryItems(input.module);
-    const existing = memoryItems.find((item) => item.id === input.entityId);
-
-    if (existing) {
-      const contact = readItemMetadata(input.metadata);
-      existing.stage = input.to;
-      existing.title = input.title ?? existing.title;
-      existing.subtitle = input.subtitle ?? existing.subtitle;
-      if (contact.assignee !== undefined) {
-        existing.assignee = contact.assignee;
-      }
-      if (contact.phone !== undefined) {
-        existing.phone = contact.phone;
-      }
-      if (contact.email !== undefined) {
-        existing.email = contact.email;
-      }
-    } else {
-      const contact = readItemMetadata(input.metadata);
-      memoryItems.push({
-        id: input.entityId,
-        title: input.title ?? input.entityId,
-        subtitle: input.subtitle,
-        stage: input.to,
-        assignee: contact.assignee,
-        phone: contact.phone,
-        email: contact.email,
-      });
-    }
-
-    return;
-  }
+  const metadataContact = readItemMetadata(input.metadata);
 
   try {
-    await pipelineItemDelegate.upsert({
-      where: {
-        module_entityId: {
-          module: input.module,
-          entityId: input.entityId,
-        },
-      },
-      create: {
-        module: input.module,
-        entityType: input.entityType,
-        entityId: input.entityId,
-        title: input.title ?? input.entityId,
-        subtitle: input.subtitle,
-        stage: input.to,
-        metadata: input.metadata ?? null,
-      },
-      update: {
-        stage: input.to,
-        title: input.title ?? undefined,
-        subtitle: input.subtitle,
-        metadata: input.metadata,
-      },
+    await ensureTursoSchema();
+    const client = getTursoClient();
+
+    await client.execute({
+      sql: `
+        INSERT INTO pipeline_items (id, module, entity_type, entity_id, title, subtitle, stage, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(module, entity_id)
+        DO UPDATE SET
+          stage = excluded.stage,
+          title = COALESCE(excluded.title, pipeline_items.title),
+          subtitle = COALESCE(excluded.subtitle, pipeline_items.subtitle),
+          metadata = COALESCE(excluded.metadata, pipeline_items.metadata),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      args: [
+        crypto.randomUUID(),
+        input.module,
+        input.entityType,
+        input.entityId,
+        input.title ?? input.entityId,
+        input.subtitle ?? null,
+        input.to,
+        input.metadata ? JSON.stringify(input.metadata) : null,
+      ],
     });
   } catch {
-    const contact = readItemMetadata(input.metadata);
     upsertMemoryItem(input.module, {
       id: input.entityId,
       title: input.title ?? input.entityId,
       subtitle: input.subtitle,
       stage: input.to,
-      assignee: contact.assignee,
-      phone: contact.phone,
-      email: contact.email,
+      assignee: metadataContact.assignee,
+      phone: metadataContact.phone,
+      email: metadataContact.email,
     });
   }
 }
 
 export async function createPipelineItem(module: PipelineModule, input: CreatePipelineItemInput) {
-  const pipelineItemDelegate = getPipelineItemDelegate();
   const entityId = input.entityId ?? generateEntityId(module);
   const metadataContact = readItemMetadata(input.metadata);
   const nextAssignee = input.assignee ?? metadataContact.assignee;
@@ -320,56 +257,36 @@ export async function createPipelineItem(module: PipelineModule, input: CreatePi
     ...(input.metadata ?? {}),
   };
 
-  if (nextAssignee) {
-    nextMetadata.assignee = nextAssignee;
-  }
-
-  if (nextPhone) {
-    nextMetadata.phone = nextPhone;
-  }
-
-  if (nextEmail) {
-    nextMetadata.email = nextEmail;
-  }
-
-  if (!pipelineItemDelegate) {
-    const memoryItems = getMemoryItems(module);
-    const item: PipelineSeedItem = {
-      id: entityId,
-      title: input.title,
-      subtitle: input.subtitle,
-      stage: input.stage,
-      assignee: nextAssignee,
-      phone: nextPhone,
-      email: nextEmail,
-    };
-    memoryItems.push(item);
-    return item;
-  }
+  if (nextAssignee) nextMetadata.assignee = nextAssignee;
+  if (nextPhone) nextMetadata.phone = nextPhone;
+  if (nextEmail) nextMetadata.email = nextEmail;
 
   try {
-    await pipelineItemDelegate.upsert({
-      where: {
-        module_entityId: {
-          module,
-          entityId,
-        },
-      },
-      create: {
+    await ensureTursoSchema();
+    const client = getTursoClient();
+
+    await client.execute({
+      sql: `
+        INSERT INTO pipeline_items (id, module, entity_type, entity_id, title, subtitle, stage, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(module, entity_id)
+        DO UPDATE SET
+          title = excluded.title,
+          subtitle = excluded.subtitle,
+          stage = excluded.stage,
+          metadata = excluded.metadata,
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      args: [
+        crypto.randomUUID(),
         module,
-        entityType: input.entityType,
+        input.entityType,
         entityId,
-        title: input.title,
-        subtitle: input.subtitle,
-        stage: input.stage,
-        metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : null,
-      },
-      update: {
-        title: input.title,
-        subtitle: input.subtitle,
-        stage: input.stage,
-        metadata: nextMetadata,
-      },
+        input.title,
+        input.subtitle ?? null,
+        input.stage,
+        Object.keys(nextMetadata).length > 0 ? JSON.stringify(nextMetadata) : null,
+      ],
     });
 
     return {
@@ -382,7 +299,7 @@ export async function createPipelineItem(module: PipelineModule, input: CreatePi
       email: nextEmail,
     };
   } catch {
-    const item = upsertMemoryItem(module, {
+    return upsertMemoryItem(module, {
       id: entityId,
       title: input.title,
       subtitle: input.subtitle,
@@ -391,7 +308,6 @@ export async function createPipelineItem(module: PipelineModule, input: CreatePi
       phone: nextPhone,
       email: nextEmail,
     });
-    return item;
   }
 }
 
@@ -400,113 +316,76 @@ export async function updatePipelineItem(
   entityId: string,
   input: UpdatePipelineItemInput
 ) {
-  const pipelineItemDelegate = getPipelineItemDelegate();
-
-  if (!pipelineItemDelegate) {
-    const memoryItems = getMemoryItems(module);
-    const existing = memoryItems.find((item) => item.id === entityId);
-
-    if (!existing) {
-      return null;
-    }
-
-    if (input.title !== undefined) {
-      existing.title = input.title;
-    }
-
-    if (input.subtitle !== undefined) {
-      existing.subtitle = input.subtitle;
-    }
-
-    if (input.stage !== undefined) {
-      existing.stage = input.stage;
-    }
-
-    if (input.assignee !== undefined) {
-      existing.assignee = input.assignee;
-    }
-
-    if (input.phone !== undefined) {
-      existing.phone = input.phone;
-    }
-
-    if (input.email !== undefined) {
-      existing.email = input.email;
-    }
-
-    return existing;
-  }
-
   try {
-    const rows = await pipelineItemDelegate.findMany({
-      where: { module },
-      orderBy: { createdAt: "asc" },
+    await ensureTursoSchema();
+    const client = getTursoClient();
+
+    const currentResult = await client.execute({
+      sql: `
+        SELECT title, subtitle, stage, metadata
+        FROM pipeline_items
+        WHERE module = ? AND entity_id = ?
+        LIMIT 1
+      `,
+      args: [module, entityId],
     });
-    const existing = rows.find((row) => row.entityId === entityId);
+
+    const existing = currentResult.rows[0] as Record<string, unknown> | undefined;
 
     if (!existing) {
       return null;
     }
 
-    const incomingMetadata = readItemMetadata(input.metadata);
-    const existingMetadata = readItemMetadata(existing.metadata);
-    const next = {
-      title: input.title ?? existing.title,
-      subtitle: input.subtitle ?? (existing.subtitle ?? undefined),
-      stage: input.stage ?? existing.stage,
-      assignee: input.assignee ?? incomingMetadata.assignee ?? existingMetadata.assignee,
-      phone: input.phone ?? incomingMetadata.phone ?? existingMetadata.phone,
-      email: input.email ?? incomingMetadata.email ?? existingMetadata.email,
-    };
+    const existingMetadataRaw = readString(existing.metadata);
+    let existingMetadata: Record<string, unknown> = {};
 
-    const nextMetadata: Record<string, unknown> = {
+    if (existingMetadataRaw) {
+      try {
+        existingMetadata = JSON.parse(existingMetadataRaw) as Record<string, unknown>;
+      } catch {
+        existingMetadata = {};
+      }
+    }
+
+    const nextTitle = input.title ?? readString(existing.title) ?? entityId;
+    const nextSubtitle = input.subtitle ?? readString(existing.subtitle);
+    const nextStage = input.stage ?? readString(existing.stage) ?? "BACKLOG";
+
+    const mergedMetadata: Record<string, unknown> = {
+      ...existingMetadata,
       ...(input.metadata ?? {}),
     };
 
-    if (next.assignee) {
-      nextMetadata.assignee = next.assignee;
-    }
+    if (input.assignee !== undefined) mergedMetadata.assignee = input.assignee;
+    if (input.phone !== undefined) mergedMetadata.phone = input.phone;
+    if (input.email !== undefined) mergedMetadata.email = input.email;
 
-    if (next.phone) {
-      nextMetadata.phone = next.phone;
-    }
-
-    if (next.email) {
-      nextMetadata.email = next.email;
-    }
-
-    await pipelineItemDelegate.upsert({
-      where: {
-        module_entityId: {
-          module,
-          entityId,
-        },
-      },
-      create: {
+    await client.execute({
+      sql: `
+        UPDATE pipeline_items
+        SET title = ?, subtitle = ?, stage = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE module = ? AND entity_id = ?
+      `,
+      args: [
+        nextTitle,
+        nextSubtitle ?? null,
+        nextStage,
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
         module,
-        entityType: "pipeline_entity",
         entityId,
-        title: next.title,
-        subtitle: next.subtitle,
-        stage: next.stage,
-        metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : null,
-      },
-      update: {
-        title: next.title,
-        subtitle: next.subtitle,
-        stage: next.stage,
-        metadata: nextMetadata,
-      },
+      ],
     });
+
+    const contact = readItemMetadata(mergedMetadata);
 
     return {
       id: entityId,
-      title: next.title,
-      subtitle: next.subtitle,
-      stage: next.stage,
-      assignee: next.assignee,
-      phone: next.phone,
-      email: next.email,
+      title: nextTitle,
+      subtitle: nextSubtitle,
+      stage: nextStage,
+      assignee: contact.assignee,
+      phone: contact.phone,
+      email: contact.email,
     };
   } catch {
     const memoryItems = getMemoryItems(module);
@@ -516,67 +395,28 @@ export async function updatePipelineItem(
       return null;
     }
 
-    if (input.title !== undefined) {
-      existing.title = input.title;
-    }
-
-    if (input.subtitle !== undefined) {
-      existing.subtitle = input.subtitle;
-    }
-
-    if (input.stage !== undefined) {
-      existing.stage = input.stage;
-    }
-
-    if (input.assignee !== undefined) {
-      existing.assignee = input.assignee;
-    }
-
-    if (input.phone !== undefined) {
-      existing.phone = input.phone;
-    }
-
-    if (input.email !== undefined) {
-      existing.email = input.email;
-    }
+    if (input.title !== undefined) existing.title = input.title;
+    if (input.subtitle !== undefined) existing.subtitle = input.subtitle;
+    if (input.stage !== undefined) existing.stage = input.stage;
+    if (input.assignee !== undefined) existing.assignee = input.assignee;
+    if (input.phone !== undefined) existing.phone = input.phone;
+    if (input.email !== undefined) existing.email = input.email;
 
     return existing;
   }
 }
 
 export async function deletePipelineItem(module: PipelineModule, entityId: string) {
-  const pipelineItemDelegate = getPipelineItemDelegate();
-
-  if (!pipelineItemDelegate) {
-    const memoryItems = getMemoryItems(module);
-    const index = memoryItems.findIndex((item) => item.id === entityId);
-
-    if (index === -1) {
-      return false;
-    }
-
-    memoryItems.splice(index, 1);
-    return true;
-  }
-
   try {
-    const rows = await pipelineItemDelegate.findMany({
-      where: { module },
-      orderBy: { createdAt: "asc" },
+    await ensureTursoSchema();
+    const client = getTursoClient();
+
+    const result = await client.execute({
+      sql: "DELETE FROM pipeline_items WHERE module = ? AND entity_id = ?",
+      args: [module, entityId],
     });
 
-    if (!rows.some((row) => row.entityId === entityId)) {
-      return false;
-    }
-
-    await pipelineItemDelegate.deleteMany({
-      where: {
-        module,
-        entityId,
-      },
-    });
-
-    return true;
+    return Number(result.rowsAffected ?? 0) > 0;
   } catch {
     const memoryItems = getMemoryItems(module);
     const index = memoryItems.findIndex((item) => item.id === entityId);
