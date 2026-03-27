@@ -157,7 +157,8 @@ export default function SocialPage() {
         throw new Error(payload.error ?? "Unable to create content entry");
       }
 
-      setEntries((cur) => [...cur, payload.data]);
+      const createdEntry = payload.data;
+      setEntries((cur) => [...cur, createdEntry]);
       setTitle("");
       setScript("");
     } catch (error) {
