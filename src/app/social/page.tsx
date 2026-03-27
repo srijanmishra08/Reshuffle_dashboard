@@ -30,6 +30,13 @@ const STATUS_STYLES: Record<Status, string> = {
   POSTED:    "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
+const STATUS_LABELS: Record<Status, string> = {
+  IDEA: "Idea",
+  DRAFT: "Shoot",
+  SCHEDULED: "Scheduled",
+  POSTED: "Posted",
+};
+
 function toDateKey(value: Date) {
   const y  = value.getFullYear();
   const m  = `${value.getMonth() + 1}`.padStart(2, "0");
@@ -168,7 +175,7 @@ export default function SocialPage() {
               className="rounded-md border border-slate-300 bg-slate-50 px-2 py-2 text-sm"
             >
               <option value="IDEA">Idea</option>
-              <option value="DRAFT">Draft</option>
+              <option value="DRAFT">Shoot</option>
               <option value="SCHEDULED">Scheduled</option>
               <option value="POSTED">Posted</option>
             </select>
@@ -317,7 +324,7 @@ export default function SocialPage() {
                           onClick={() => cycleStatus(entry.id)}
                           className={["rounded border px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-70", STATUS_STYLES[entry.status]].join(" ")}
                         >
-                          {entry.status} →
+                          {STATUS_LABELS[entry.status]} →
                         </button>
                       </div>
                       <p className="text-sm font-semibold text-slate-900">{entry.title}</p>
@@ -358,7 +365,7 @@ export default function SocialPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className={["rounded border px-2 py-0.5 text-[10px] font-medium", STATUS_STYLES[entry.status]].join(" ")}>
-                    {entry.status}
+                    {STATUS_LABELS[entry.status]}
                   </span>
                   <button type="button" onClick={() => setSelectedDayKey(entry.date)} className="rounded border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-white">
                     View
