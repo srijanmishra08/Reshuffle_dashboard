@@ -5,6 +5,10 @@ import {
   updatePipelineItemSchema,
 } from "@/server/models/pipeline";
 import { deletePipelineItem, updatePipelineItem } from "@/server/services/pipeline-items";
+import { publishRealtime } from "@/server/services/realtime";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type RouteContext = {
   params: Promise<{ module: string; entityId: string }>;
@@ -42,13 +46,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const updated = await updatePipelineItem(moduleValue, entityId, parsedBody.data);
+  try {
+    const updated = await updatePipelineItem(moduleValue, entityId, parsedBody.data);
 
-  if (!updated) {
-    return NextResponse.json({ error: "Pipeline item not found" }, { status: 404 });
+    if (!updated) {
+      return NextResponse.json({ error: "Pipeline item not found" }, { status: 404 });
+    }
+
+    publishRealtime(`pipeline:${moduleValue}`, {
+      type: "pipeline_item_updated",
+      payload: { entityId, stage: updated.stage },
+    });
+
+    return NextResponse.json({ data: updated });
+  } catch {
+    return NextResponse.json({ error: "Could not update pipeline item" }, { status: 500 });
   }
-
-  return NextResponse.json({ data: updated });
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
@@ -65,11 +78,20 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     );
   }
 
-  const removed = await deletePipelineItem(parsedModule.data, entityId);
+  try {
+    const removed = await deletePipelineItem(parsedModule.data, entityId);
 
-  if (!removed) {
-    return NextResponse.json({ error: "Pipeline item not found" }, { status: 404 });
+    if (!removed) {
+      return NextResponse.json({ error: "Pipeline item not found" }, { status: 404 });
+    }
+
+    publishRealtime(`pipeline:${parsedModule.data}`, {
+      type: "pipeline_item_deleted",
+      payload: { entityId },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Could not delete pipeline item" }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true });
 }

@@ -138,8 +138,26 @@ export async function ensureTursoSchema(): Promise<void> {
       )
     `);
 
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS freelancers (
+        id TEXT PRIMARY KEY,
+        freelancer TEXT NOT NULL,
+        skill TEXT,
+        availability TEXT,
+        project TEXT,
+        utilization TEXT,
+        payout TEXT,
+        performance TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await client.execute(
       "CREATE INDEX IF NOT EXISTS idx_social_entries_date ON social_entries (date)"
+    );
+    await client.execute(
+      "CREATE INDEX IF NOT EXISTS idx_freelancers_name ON freelancers (freelancer)"
     );
     await client.execute(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_items_module_entity ON pipeline_items (module, entity_id)"

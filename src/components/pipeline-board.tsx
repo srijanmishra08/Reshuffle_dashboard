@@ -1,49 +1,7 @@
 "use client";
 
-import { useEffect, useState, type DragEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type DragEvent, type FormEvent } from "react";
 import type { PipelineModule, PipelineSeedItem } from "@/lib/pipeline-seeds";
-
-const STORAGE_PREFIX = "dashboard_pipeline_items";
-
-function getStorageKey(module: PipelineModule) {
-  return `${STORAGE_PREFIX}_${module}`;
-}
-
-function loadStoredItems(module: PipelineModule): PipelineSeedItem[] | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(getStorageKey(module));
-
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return null;
-    }
-
-    return parsed as PipelineSeedItem[];
-  } catch {
-    return null;
-  }
-}
-
-function saveStoredItems(module: PipelineModule, items: PipelineSeedItem[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(getStorageKey(module), JSON.stringify(items));
-  } catch {
-    // Ignore storage errors.
-  }
-}
 
 type PipelineDefinition = {
   module: PipelineModule;
@@ -58,16 +16,14 @@ type PipelineDefinition = {
 
 type PipelineBoardProps = {
   module: PipelineModule;
-  initialItems: PipelineSeedItem[];
   assignees?: string[];
 };
 
-export function PipelineBoard({ module, initialItems, assignees }: PipelineBoardProps) {
+export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
   const supportsClientContact = module === "crm" || module === "outreach";
-  const [items, setItems] = useState(initialItems);
+  const [items, setItems] = useState<PipelineSeedItem[]>([]);
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
   const [message, setMessage] = useState<string>("Loading pipeline...");
-  const [storageReady, setStorageReady] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newSubtitle, setNewSubtitle] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -82,20 +38,31 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
   const [editStage, setEditStage] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
 
+  const refreshItems = useCallback(async () => {
+    const response = await fetch(`/api/pipelines/${module}/items`, {
+      cache: "no-store",
+    });
+
+    const json = (await response.json()) as {
+      data?: PipelineSeedItem[];
+      error?: string;
+    };
+
+    if (!response.ok || !json.data) {
+      throw new Error(json.error ?? "Could not load pipeline items");
+    }
+
+    setItems(json.data);
+  }, [module]);
+
   useEffect(() => {
     const run = async () => {
-      const storedItems = loadStoredItems(module);
-
-      if (storedItems) {
-        setItems(storedItems);
-      } else {
-        setItems(initialItems);
-      }
+      setItems([]);
 
       try {
         const [definitionResponse, itemsResponse] = await Promise.all([
-          fetch(`/api/pipelines/${module}`),
-          fetch(`/api/pipelines/${module}/items`),
+          fetch(`/api/pipelines/${module}`, { cache: "no-store" }),
+          fetch(`/api/pipelines/${module}/items`, { cache: "no-store" }),
         ]);
         const definitionJson = (await definitionResponse.json()) as {
           data?: PipelineDefinition;
@@ -112,7 +79,7 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
             data?: PipelineSeedItem[];
           };
 
-          if (itemsJson.data && !storedItems) {
+          if (itemsJson.data) {
             setItems(itemsJson.data);
           }
         }
@@ -121,26 +88,39 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
         setNewStage(definitionJson.data.defaultStage);
         setMessage("Drag a card to move between stages.");
       } catch {
-        if (storedItems) {
-          setMessage("Working from locally saved data.");
-        } else {
-          setMessage("Could not load pipeline");
-        }
-      } finally {
-        setStorageReady(true);
+        setMessage("Could not load pipeline");
       }
     };
 
     void run();
-  }, [initialItems, module]);
+  }, [module]);
 
   useEffect(() => {
-    if (!storageReady) {
+    if (!definition) {
       return;
     }
 
-    saveStoredItems(module, items);
-  }, [items, module, storageReady]);
+    const source = new EventSource(`/api/realtime/pipelines/${module}`);
+
+    source.onmessage = () => {
+      void refreshItems().catch(() => {
+        setMessage("Could not refresh pipeline items");
+      });
+    };
+
+    const onFocus = () => {
+      void refreshItems().catch(() => {
+        setMessage("Could not refresh pipeline items");
+      });
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      source.close();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [definition, module, refreshItems]);
 
   async function handleDrop(targetStage: string, event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -156,8 +136,6 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
     if (!card || fromStage === targetStage) {
       return;
     }
-
-    const nextItems = items.map((item) => (item.id === cardId ? { ...item, stage: targetStage } : item));
 
     if (!definition.allowedTransitions[fromStage]?.includes(targetStage)) {
       setMessage(`Transition '${fromStage}' -> '${targetStage}' is not allowed.`);
@@ -187,17 +165,16 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       const json = (await response.json()) as { error?: string };
 
       if (!response.ok) {
-        setItems(nextItems);
-        setMessage(json.error ?? `${card.title} moved locally to ${targetStage}.`);
+        setMessage(json.error ?? `Could not move ${card.title}.`);
         return;
       }
+
+      await refreshItems();
     } catch {
-      setItems(nextItems);
-      setMessage(`${card.title} moved locally to ${targetStage}.`);
+      setMessage(`Could not move ${card.title}.`);
       return;
     }
 
-    setItems(nextItems);
     setMessage(`${card.title} moved from ${fromStage} to ${targetStage}.`);
   }
 
@@ -207,16 +184,6 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
     if (!definition || !newTitle.trim()) {
       return;
     }
-
-    const localItem: PipelineSeedItem = {
-      id: `${module}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: newTitle.trim(),
-      subtitle: newSubtitle.trim() || undefined,
-      stage: newStage || definition.defaultStage,
-      assignee: newAssignee || undefined,
-      phone: newPhone.trim() || undefined,
-      email: newEmail.trim() || undefined,
-    };
 
     try {
       const response = await fetch(`/api/pipelines/${module}/items`, {
@@ -238,15 +205,13 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
 
       if (!response.ok || !json.data) {
-        setItems((current) => [...current, localItem]);
-        setMessage(json.error ?? `Created ${localItem.title} locally.`);
+        setMessage(json.error ?? "Could not create card.");
       } else {
-        setItems((current) => [...current, json.data as PipelineSeedItem]);
+        await refreshItems();
         setMessage(`Created ${json.data.title}.`);
       }
     } catch {
-      setItems((current) => [...current, localItem]);
-      setMessage(`Created ${localItem.title} locally.`);
+      setMessage("Could not create card.");
     }
 
     setNewTitle("");
@@ -273,16 +238,6 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       return;
     }
 
-    const localItem: PipelineSeedItem = {
-      id: itemId,
-      title: editTitle.trim(),
-      subtitle: editSubtitle.trim() || undefined,
-      stage: editStage,
-      assignee: editAssignee || undefined,
-      phone: editPhone.trim() || undefined,
-      email: editEmail.trim() || undefined,
-    };
-
     try {
       const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
         method: "PATCH",
@@ -303,20 +258,16 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
 
       if (!response.ok || !json.data) {
-        setItems((current) => current.map((item) => (item.id === itemId ? localItem : item)));
-        setEditingId(null);
-        setMessage(json.error ?? `Updated ${localItem.title} locally.`);
+        setMessage(json.error ?? "Could not update card.");
         return;
       }
 
-      setItems((current) => current.map((item) => (item.id === itemId ? (json.data as PipelineSeedItem) : item)));
+      await refreshItems();
       setEditingId(null);
       setMessage(`Updated ${json.data.title}.`);
       return;
     } catch {
-      setItems((current) => current.map((item) => (item.id === itemId ? localItem : item)));
-      setEditingId(null);
-      setMessage(`Updated ${localItem.title} locally.`);
+      setMessage("Could not update card.");
       return;
     }
   }
@@ -330,23 +281,16 @@ export function PipelineBoard({ module, initialItems, assignees }: PipelineBoard
       const json = (await response.json()) as { error?: string };
 
       if (!response.ok) {
-        setItems((current) => current.filter((item) => item.id !== itemId));
-        if (editingId === itemId) {
-          setEditingId(null);
-        }
-        setMessage(json.error ?? "Card deleted locally.");
+        setMessage(json.error ?? "Could not delete card.");
         return;
       }
+
+      await refreshItems();
     } catch {
-      setItems((current) => current.filter((item) => item.id !== itemId));
-      if (editingId === itemId) {
-        setEditingId(null);
-      }
-      setMessage("Card deleted locally.");
+      setMessage("Could not delete card.");
       return;
     }
 
-    setItems((current) => current.filter((item) => item.id !== itemId));
     if (editingId === itemId) {
       setEditingId(null);
     }

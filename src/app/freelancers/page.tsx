@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { saveFreelancerNames } from "@/lib/freelancer-store";
 
 type FreelancerRow = {
   id: string;
@@ -15,74 +14,152 @@ type FreelancerRow = {
   performance: string;
 };
 
-const initialRows: FreelancerRow[] = [
-  {
-    id: "fr-1",
-    freelancer: "Priya R",
-    skill: "Video Editing",
-    availability: "20 hrs/week",
-    project: "Campaign Launch Kit",
-    utilization: "78%",
-    payout: "35000",
-    performance: "4.7/5",
-  },
-  {
-    id: "fr-2",
-    freelancer: "Aman S",
-    skill: "Performance Marketing",
-    availability: "15 hrs/week",
-    project: "Lead Gen Sprint",
-    utilization: "91%",
-    payout: "42000",
-    performance: "4.4/5",
-  },
-  {
-    id: "fr-3",
-    freelancer: "Disha T",
-    skill: "UI/Visual Design",
-    availability: "10 hrs/week",
-    project: "Website Revamp",
-    utilization: "103%",
-    payout: "38000",
-    performance: "4.2/5",
-  },
-];
-
 export default function FreelancersPage() {
-  const [rows, setRows] = useState<FreelancerRow[]>(initialRows);
+  const [rows, setRows] = useState<FreelancerRow[]>([]);
+  const [message, setMessage] = useState("Loading freelancers...");
+
+  async function refreshRows() {
+    const response = await fetch("/api/freelancers", { cache: "no-store" });
+    const json = (await response.json()) as { data?: FreelancerRow[]; error?: string };
+
+    if (!response.ok || !json.data) {
+      throw new Error(json.error ?? "Could not load freelancers");
+    }
+
+    setRows(json.data);
+  }
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        await refreshRows();
+        setMessage("Freelancer sheet synced with database.");
+      } catch {
+        setMessage("Could not load freelancers");
+      }
+    };
+
+    void run();
+  }, []);
+
+  useEffect(() => {
+    const source = new EventSource("/api/realtime/freelancers");
+
+    source.onmessage = () => {
+      void refreshRows().catch(() => {
+        setMessage("Could not refresh freelancers");
+      });
+    };
+
+    const onFocus = () => {
+      void refreshRows().catch(() => {
+        setMessage("Could not refresh freelancers");
+      });
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      source.close();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
   function updateRow(id: string, field: keyof Omit<FreelancerRow, "id">, value: string) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   }
 
-  function addRow() {
-    setRows((current) => [
-      ...current,
-      {
-        id: `fr-${Date.now()}`,
-        freelancer: "",
-        skill: "",
-        availability: "",
-        project: "",
-        utilization: "",
-        payout: "",
-        performance: "",
-      },
-    ]);
+  async function addRow() {
+    try {
+      const response = await fetch("/api/freelancers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          freelancer: "New Freelancer",
+          skill: "",
+          availability: "",
+          project: "",
+          utilization: "",
+          payout: "",
+          performance: "",
+        }),
+      });
+
+      const json = (await response.json()) as { data?: FreelancerRow; error?: string };
+
+      if (!response.ok || !json.data) {
+        setMessage(json.error ?? "Could not add row");
+        return;
+      }
+
+      setRows((current) => [...current, json.data as FreelancerRow]);
+      setMessage("Added freelancer row.");
+    } catch {
+      setMessage("Could not add row");
+    }
   }
 
-  function removeRow(id: string) {
-    setRows((current) => current.filter((row) => row.id !== id));
+  async function saveRowById(id: string) {
+    const row = rows.find((entry) => entry.id === id);
+
+    if (!row || !row.freelancer.trim()) {
+      setMessage("Freelancer name is required");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/freelancers/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          freelancer: row.freelancer,
+          skill: row.skill,
+          availability: row.availability,
+          project: row.project,
+          utilization: row.utilization,
+          payout: row.payout,
+          performance: row.performance,
+        }),
+      });
+
+      const json = (await response.json()) as { data?: FreelancerRow; error?: string };
+
+      if (!response.ok || !json.data) {
+        setMessage(json.error ?? "Could not save row");
+        return;
+      }
+
+      setRows((current) => current.map((entry) => (entry.id === row.id ? (json.data as FreelancerRow) : entry)));
+      setMessage(`Saved ${json.data.freelancer}.`);
+    } catch {
+      setMessage("Could not save row");
+    }
   }
 
-  useEffect(() => {
-    const names = rows.map((r) => r.freelancer).filter((n) => n.trim());
-    saveFreelancerNames(names);
-  }, [rows]);
+  async function removeRow(id: string) {
+    try {
+      const response = await fetch(`/api/freelancers/${id}`, {
+        method: "DELETE",
+      });
+
+      const json = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        setMessage(json.error ?? "Could not delete row");
+        return;
+      }
+
+      setRows((current) => current.filter((row) => row.id !== id));
+      setMessage("Deleted freelancer row.");
+    } catch {
+      setMessage("Could not delete row");
+    }
+  }
 
   return (
     <DashboardShell title="Freelancers Sheet" subtitle="Editable Excel-style tracker for skills, allocation, utilization, and payouts.">
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{message}</p>
         <button type="button" onClick={addRow} className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
           Add Row
         </button>
@@ -106,25 +183,25 @@ export default function FreelancersPage() {
             {rows.map((row) => (
               <tr key={row.id} className="odd:bg-white even:bg-slate-50">
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.freelancer} onChange={(event) => updateRow(row.id, "freelancer", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.freelancer} onChange={(event) => updateRow(row.id, "freelancer", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.skill} onChange={(event) => updateRow(row.id, "skill", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.skill} onChange={(event) => updateRow(row.id, "skill", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.availability} onChange={(event) => updateRow(row.id, "availability", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.availability} onChange={(event) => updateRow(row.id, "availability", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.project} onChange={(event) => updateRow(row.id, "project", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.project} onChange={(event) => updateRow(row.id, "project", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.utilization} onChange={(event) => updateRow(row.id, "utilization", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.utilization} onChange={(event) => updateRow(row.id, "utilization", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.payout} onChange={(event) => updateRow(row.id, "payout", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.payout} onChange={(event) => updateRow(row.id, "payout", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.performance} onChange={(event) => updateRow(row.id, "performance", event.target.value)} className="w-full rounded px-2 py-1" />
+                  <input value={row.performance} onChange={(event) => updateRow(row.id, "performance", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
                   <button type="button" onClick={() => removeRow(row.id)} className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700">

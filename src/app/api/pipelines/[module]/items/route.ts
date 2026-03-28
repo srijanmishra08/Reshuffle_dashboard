@@ -6,6 +6,10 @@ import {
 } from "@/server/models/pipeline";
 import { getPipelineModel } from "@/server/services/pipeline";
 import { createPipelineItem, listPipelineItems } from "@/server/services/pipeline-items";
+import { publishRealtime } from "@/server/services/realtime";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type RouteContext = {
   params: Promise<{ module: string }>;
@@ -25,8 +29,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     );
   }
 
-  const items = await listPipelineItems(parsed.data);
-  return NextResponse.json({ data: items });
+  try {
+    const items = await listPipelineItems(parsed.data);
+    return NextResponse.json({ data: items });
+  } catch {
+    return NextResponse.json({ error: "Could not load pipeline items" }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -63,15 +71,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const item = await createPipelineItem(moduleValue, {
-    entityType: model.entityType,
-    entityId: parsedBody.data.entityId,
-    title: parsedBody.data.title,
-    subtitle: parsedBody.data.subtitle,
-    stage: targetStage,
-    assignee: parsedBody.data.assignee,
-    metadata: parsedBody.data.metadata,
-  });
+  try {
+    const item = await createPipelineItem(moduleValue, {
+      entityType: model.entityType,
+      entityId: parsedBody.data.entityId,
+      title: parsedBody.data.title,
+      subtitle: parsedBody.data.subtitle,
+      stage: targetStage,
+      assignee: parsedBody.data.assignee,
+      metadata: parsedBody.data.metadata,
+    });
 
-  return NextResponse.json({ data: item }, { status: 201 });
+    publishRealtime(`pipeline:${moduleValue}`, {
+      type: "pipeline_item_created",
+      payload: { entityId: item.id, stage: item.stage },
+    });
+
+    return NextResponse.json({ data: item }, { status: 201 });
+  } catch {
+    return NextResponse.json({ error: "Could not create pipeline item" }, { status: 500 });
+  }
 }

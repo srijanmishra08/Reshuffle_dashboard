@@ -1,7 +1,6 @@
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ModulePanel } from "@/components/module-panel";
 import { PipelineBoard } from "@/components/pipeline-board";
-import { pipelineSeedItems } from "@/lib/pipeline-seeds";
 
 export default function EventsPage() {
   return (
@@ -25,7 +24,7 @@ export default function EventsPage() {
           ]}
         />
       </div>
-      <PipelineBoard module="social" initialItems={pipelineSeedItems.social} />
+      <PipelineBoard module="social" />
     </DashboardShell>
   );
 }

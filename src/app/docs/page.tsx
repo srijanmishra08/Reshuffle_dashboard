@@ -2,7 +2,6 @@ import { DashboardShell } from "@/components/dashboard-shell";
 import { ModulePanel } from "@/components/module-panel";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { moduleHighlights } from "@/lib/module-data";
-import { pipelineSeedItems } from "@/lib/pipeline-seeds";
 
 export default function DocsPage() {
   return (
@@ -18,7 +17,7 @@ export default function DocsPage() {
           ]}
         />
       </div>
-      <PipelineBoard module="docs" initialItems={pipelineSeedItems.docs} />
+      <PipelineBoard module="docs" />
     </DashboardShell>
   );
 }
