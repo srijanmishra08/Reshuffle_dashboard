@@ -64,6 +64,14 @@ export default function SocialPage() {
   const [date,     setDate]     = useState(todayKey);
   const [status,   setStatus]   = useState<Status>("IDEA");
 
+  // edit-form state
+  const [editingId,          setEditingId]          = useState<string | null>(null);
+  const [editTitle,          setEditTitle]          = useState("");
+  const [editScript,         setEditScript]         = useState("");
+  const [editPlatform,       setEditPlatform]       = useState<Platform>("Instagram");
+  const [editDate,           setEditDate]           = useState("");
+  const [editStatus,         setEditStatus]         = useState<Status>("IDEA");
+
   useEffect(() => {
     let isMounted = true;
 
@@ -214,6 +222,60 @@ export default function SocialPage() {
       setEntries((cur) => cur.map((entry) => (entry.id === id ? payload.data! : entry)));
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : "Unable to update entry status");
+    }
+  }
+
+  function startEditing(entry: CalendarEntry) {
+    setEditingId(entry.id);
+    setEditTitle(entry.title);
+    setEditScript(entry.script);
+    setEditPlatform(entry.platform);
+    setEditDate(entry.date);
+    setEditStatus(entry.status);
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setEditTitle("");
+    setEditScript("");
+    setEditPlatform("Instagram");
+    setEditDate("");
+    setEditStatus("IDEA");
+  }
+
+  async function handleEditSave(id: string) {
+    if (!editTitle.trim() || !editDate) {
+      setRequestError("Title and date are required");
+      return;
+    }
+
+    setRequestError(null);
+
+    try {
+      const response = await fetch(`/api/social/entries/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          script: editScript.trim(),
+          platform: editPlatform,
+          date: editDate,
+          status: editStatus,
+        }),
+      });
+
+      const payload = (await response.json()) as { data?: CalendarEntry; error?: string };
+
+      if (!response.ok || !payload.data) {
+        throw new Error(payload.error ?? "Unable to update content entry");
+      }
+
+      setEntries((cur) => cur.map((entry) => (entry.id === id ? payload.data! : entry)));
+      cancelEditing();
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Unable to update content entry");
     }
   }
 
@@ -412,35 +474,114 @@ export default function SocialPage() {
             ) : (
               <div className="divide-y divide-slate-100">
                 {selectedDayEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-start gap-4 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className={["rounded px-2 py-0.5 text-[10px] font-semibold", PLATFORM_STYLES[entry.platform]].join(" ")}>
-                          {entry.platform}
-                        </span>
-                        <button
-                          type="button"
-                          title="Click to advance status"
-                          onClick={() => cycleStatus(entry.id)}
-                          className={["rounded border px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-70", STATUS_STYLES[entry.status]].join(" ")}
-                        >
-                          {STATUS_LABELS[entry.status]} →
-                        </button>
+                  <div key={entry.id} className="px-4 py-3">
+                    {editingId === entry.id ? (
+                      // Edit mode
+                      <div className="space-y-3">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            placeholder="Content title"
+                            className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+                          />
+                          <select
+                            value={editPlatform}
+                            onChange={(e) => setEditPlatform(e.target.value as Platform)}
+                            className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+                          >
+                            <option>Instagram</option>
+                            <option>LinkedIn</option>
+                            <option>YouTube</option>
+                            <option>X</option>
+                            <option>Facebook</option>
+                          </select>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            type="date"
+                            value={editDate}
+                            onChange={(e) => setEditDate(e.target.value)}
+                            className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+                          />
+                          <select
+                            value={editStatus}
+                            onChange={(e) => setEditStatus(e.target.value as Status)}
+                            className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+                          >
+                            <option value="IDEA">Idea</option>
+                            <option value="DRAFT">Shoot</option>
+                            <option value="SCHEDULED">Scheduled</option>
+                            <option value="POSTED">Posted</option>
+                          </select>
+                        </div>
+                        <textarea
+                          value={editScript}
+                          onChange={(e) => setEditScript(e.target.value)}
+                          placeholder="Script / copy notes"
+                          rows={3}
+                          className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEditSave(entry.id)}
+                            className="rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700"
+                          >
+                            Save Changes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditing}
+                            className="rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-sm font-semibold text-slate-900">{entry.title}</p>
-                      {entry.script ? (
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{entry.script}</p>
-                      ) : (
-                        <p className="mt-1 text-xs text-slate-400 italic">No script added.</p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => deleteEntry(entry.id)}
-                      className="shrink-0 rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                    >
-                      Delete
-                    </button>
+                    ) : (
+                      // View mode
+                      <div className="flex items-start gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className={["rounded px-2 py-0.5 text-[10px] font-semibold", PLATFORM_STYLES[entry.platform]].join(" ")}>
+                              {entry.platform}
+                            </span>
+                            <button
+                              type="button"
+                              title="Click to advance status"
+                              onClick={() => cycleStatus(entry.id)}
+                              className={["rounded border px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-70", STATUS_STYLES[entry.status]].join(" ")}
+                            >
+                              {STATUS_LABELS[entry.status]} →
+                            </button>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-900">{entry.title}</p>
+                          {entry.script ? (
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{entry.script}</p>
+                          ) : (
+                            <p className="mt-1 text-xs text-slate-400 italic">No script added.</p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditing(entry)}
+                            className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEntry(entry.id)}
+                            className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
