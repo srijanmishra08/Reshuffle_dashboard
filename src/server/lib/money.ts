@@ -8,13 +8,16 @@ export function paise(value: number): Paise {
   return value as Paise;
 }
 
-/** Parse a rupee amount ("1234.50", 1234.5) to paise without float drift. */
-export function toPaise(rupees: string | number): Paise {
-  const text = typeof rupees === "number" ? rupees.toFixed(2) : rupees.trim().replace(/,/g, "");
+/** Parse a rupee amount string ("1234.50") to paise without float drift. Strings only: a float has already lost precision. */
+export function toPaise(rupees: string): Paise {
+  if (typeof rupees !== "string") {
+    throw new Error("toPaise expects a string; floats must not carry money");
+  }
+  const text = rupees.trim().replace(/,/g, "");
   const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(text);
 
   if (!match) {
-    throw new Error(`Invalid rupee amount: ${String(rupees)}`);
+    throw new Error(`Invalid rupee amount: ${rupees}`);
   }
 
   const [, sign, whole, fraction = ""] = match;
