@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Briefcase,
+  Contact,
   Handshake,
   ClipboardList,
   Code2,
@@ -58,6 +59,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/letters",
     description: "Numbered letters on letterhead.",
     icon: Mail,
+  },
+  {
+    title: "People",
+    href: "/people",
+    description: "Team records and salary slips (admin and manager).",
+    icon: Contact,
   },
   {
     title: "Project Management",
