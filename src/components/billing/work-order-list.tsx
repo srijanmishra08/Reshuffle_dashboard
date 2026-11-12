@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
@@ -21,6 +22,9 @@ export function WorkOrderList() {
 
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <Link href="/work-orders/new" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">New work order</Link>
+      </div>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-sm">
@@ -38,7 +42,7 @@ export function WorkOrderList() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-slate-100">
-                <td className="px-3 py-2 font-medium">{r.number ?? "Draft"}</td>
+                <td className="px-3 py-2 font-medium"><Link className="underline" href={`/work-orders/${r.id}`}>{r.number ?? "Draft"}</Link></td>
                 <td className="px-3 py-2">{r.companyName}</td>
                 <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
                 <td className="px-3 py-2">{r.issueDate ?? ""}</td>
