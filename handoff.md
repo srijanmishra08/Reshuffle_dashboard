@@ -175,6 +175,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients, products, meetings). Merged straight to `main` as asked. |
 | 2026-11-12 | Claude with Srijan | Ported all raw SQL to Drizzle services, removed demo seeding, then moved the whole database to Supabase Postgres: new pg schema (timestamptz, jsonb, RLS on every table), postgres-js client on the transaction pooler, PGlite tests (49 pass), baseline + seed migrations applied to Supabase, existing data copied and verified id by id (289 rows, 8 tables), previous database references removed from code and docs. |
 | 2026-11-12 | Claude with Srijan | Auth set up on Vercel (Better Auth secret and URL, Google OAuth client, admin emails). Four Sonnet reviewers audited Phase 0 and 1; their open findings are queued in section 12. |
+| 2026-11-12 | Claude (scheduled run, merged by Srijan) | Phase 2a/2b (invoices and work orders backend) landed on `main` as commit `2104cdf`, written for the old SQLite/Turso schema. When the database moved to Postgres those files were removed from the tree so `main` builds; they stay in git history (`git show 2104cdf:<path>`). Task B0 in section 12 ports them. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 
@@ -223,6 +224,7 @@ An hourly scheduled task continues development. **Each run does exactly one task
 
 **B. Phase 2: document engine, invoices, work orders** (`development-plan.md` Phase 2, one slice per run)
 
+- [ ] B0. **Port the Phase 2a/2b backend to Postgres.** It exists in history at commit `2104cdf` (`git show 2104cdf:src/server/services/invoices.ts` etc.): schema `billing.ts` and `work-orders.ts`, services `invoices.ts` and `work-orders.ts`, schemas `billing.ts` and `work-orders.ts`, routes `/api/invoices*`, `/api/work-orders*`, `/api/cron/daily`, tests, `requireBilling` (already in `authz.ts`). Rewrite with `pg-core`, `ts()` columns, jsonb, `.enableRLS()`, Dates, PGlite tests, `db:generate` for one migration, and restore the cron entry in `vercel.json`. **Needs migration on production before merge.** B2 and B3 below are covered by this task.
 - [ ] B1. Register Noto Sans with `@react-pdf/renderer`, add the shared PDF parts in `src/server/documents/parts/` (letterhead, party block, items table, tax summary, amount in words, bank block, signature block, terms) with a render test that checks the ₹ glyph. No schema change.
 - [ ] B2. Schema for `documents`, `document_templates`, `invoices`, `invoice_items`, `payments`, `credit_notes` (with `org_id`, RLS) and the migration. **Needs migration on production before merge.**
 - [ ] B3. Invoice service: create draft, edit draft, issue (transaction: number via `nextNumber`, freeze `snapshot_json`, status, audit log, idempotency key), record payment, cancel via credit note, `markOverdue`. Tests for tax modes, numbering, immutability (409), partial then full payment.
