@@ -9,7 +9,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
     env:
-      TURSO_DATABASE_URL: file:./ci.db
       BETTER_AUTH_SECRET: ci-secret-not-used-in-production-0000000
       BETTER_AUTH_URL: http://localhost:3000
     steps:

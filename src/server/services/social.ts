@@ -80,7 +80,7 @@ export async function createSocialEntry(db: Db, actorId: string, raw: unknown) {
     return fail("VALIDATION", "Invalid content entry", parsed.error.flatten());
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   const item: SocialItem = { id: newId(), ...parsed.data };
 
   await db.insert(socialEntries).values({ ...item, createdAt: now, updatedAt: now });
@@ -112,7 +112,7 @@ export async function updateSocialEntry(db: Db, actorId: string, id: string, raw
   if (Object.keys(changes).length > 0) {
     const updated = await db
       .update(socialEntries)
-      .set({ ...changes, updatedAt: new Date().toISOString() })
+      .set({ ...changes, updatedAt: new Date() })
       .where(and(eq(socialEntries.id, id)))
       .returning({ id: socialEntries.id });
 

@@ -48,7 +48,7 @@ export async function createTask(db: Db, actorId: string, raw: unknown) {
   }
 
   const input = parsed.data;
-  const now = new Date().toISOString();
+  const now = new Date();
   const task = {
     id: newId(),
     projectId: input.projectId,
@@ -57,7 +57,7 @@ export async function createTask(db: Db, actorId: string, raw: unknown) {
     details: input.details ?? null,
     status: "TODO",
     priority: input.priority ?? "MEDIUM",
-    dueDate: input.dueDate ?? null,
+    dueDate: input.dueDate ? new Date(input.dueDate) : null,
     createdAt: now,
     updatedAt: now,
   };

@@ -1,35 +1,21 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
+import { ts } from "./_cols";
 
 const id = () => text("id").primaryKey().$defaultFn(newId);
 const orgId = () => text("org_id").notNull().default("default");
 const externalId = () => text("external_id");
-const createdAt = () => text("created_at").notNull().$defaultFn(() => new Date().toISOString());
-const updatedAt = () =>
-  text("updated_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString());
+const createdAt = () => ts("created_at").notNull().defaultNow();
+const updatedAt = () => ts("updated_at").notNull().defaultNow();
 
-export const companyLifecycleValues = [
-  "PROSPECT",
-  "ONBOARDING",
-  "ACTIVE",
-  "MAINTENANCE",
-  "CLOSED",
-] as const;
+export const companyLifecycleValues = ["PROSPECT", "ONBOARDING", "ACTIVE", "MAINTENANCE", "CLOSED"] as const;
 export type CompanyLifecycle = (typeof companyLifecycleValues)[number];
 
-export const interactionTypeValues = [
-  "CALL",
-  "MEETING",
-  "WHATSAPP",
-  "EMAIL",
-  "NOTE",
-  "SITE_VISIT",
-] as const;
+export const interactionTypeValues = ["CALL", "MEETING", "WHATSAPP", "EMAIL", "NOTE", "SITE_VISIT"] as const;
 export type InteractionType = (typeof interactionTypeValues)[number];
 
-export const verticals = sqliteTable(
+export const verticals = pgTable(
   "verticals",
   {
     id: id(),
@@ -41,9 +27,9 @@ export const verticals = sqliteTable(
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("uq_verticals_org_name").on(t.orgId, t.name)]
-);
+).enableRLS();
 
-export const companies = sqliteTable(
+export const companies = pgTable(
   "companies",
   {
     id: id(),
@@ -61,19 +47,20 @@ export const companies = sqliteTable(
     source: text("source"),
     referrer: text("referrer"),
     notes: text("notes"),
-    archivedAt: text("archived_at"),
+    archivedAt: ts("archived_at"),
     createdBy: text("created_by"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
+    index("idx_companies_org_list").on(t.orgId, t.archivedAt, t.updatedAt.desc()),
     index("idx_companies_org_lifecycle").on(t.orgId, t.lifecycle),
     index("idx_companies_vertical").on(t.verticalId),
     uniqueIndex("uq_companies_org_external").on(t.orgId, t.externalId),
   ]
-);
+).enableRLS();
 
-export const contacts = sqliteTable(
+export const contacts = pgTable(
   "contacts",
   {
     id: id(),
@@ -88,9 +75,9 @@ export const contacts = sqliteTable(
     email: text("email"),
     whatsapp: text("whatsapp"),
     whatsappRole: text("whatsapp_role"), // CLIENT | CLIENT_TEAM
-    onboarded: integer("onboarded", { mode: "boolean" }).notNull().default(false),
-    approved: integer("approved", { mode: "boolean" }).notNull().default(false),
-    archivedAt: text("archived_at"),
+    onboarded: boolean("onboarded").notNull().default(false),
+    approved: boolean("approved").notNull().default(false),
+    archivedAt: ts("archived_at"),
     createdBy: text("created_by"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -99,9 +86,9 @@ export const contacts = sqliteTable(
     index("idx_contacts_company").on(t.companyId),
     uniqueIndex("uq_contacts_org_external").on(t.orgId, t.externalId),
   ]
-);
+).enableRLS();
 
-export const interactions = sqliteTable(
+export const interactions = pgTable(
   "interactions",
   {
     id: id(),
@@ -114,22 +101,28 @@ export const interactions = sqliteTable(
     dealId: text("deal_id"),
     type: text("type").notNull(),
     summary: text("summary").notNull(),
-    at: text("at").notNull(),
+    at: ts("at").notNull(),
     nextAction: text("next_action"),
-    nextActionAt: text("next_action_at"),
-    nextActionDoneAt: text("next_action_done_at"),
+    nextActionAt: ts("next_action_at"),
+    nextActionDoneAt: ts("next_action_done_at"),
     createdBy: text("created_by"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("idx_interactions_company_at").on(t.companyId, t.at),
-    index("idx_interactions_next_action").on(t.orgId, t.nextActionAt),
+    index("idx_interactions_contact").on(t.contactId),
+    index("idx_interactions_pending_org")
+      .on(t.orgId, t.nextActionAt)
+      .where(sql`${t.nextActionAt} is not null and ${t.nextActionDoneAt} is null`),
+    index("idx_interactions_pending_company")
+      .on(t.companyId, t.nextActionAt)
+      .where(sql`${t.nextActionAt} is not null and ${t.nextActionDoneAt} is null`),
     uniqueIndex("uq_interactions_org_external").on(t.orgId, t.externalId),
   ]
-);
+).enableRLS();
 
-export const meetings = sqliteTable(
+export const meetings = pgTable(
   "meetings",
   {
     id: id(),
@@ -139,9 +132,9 @@ export const meetings = sqliteTable(
     dealId: text("deal_id"),
     projectId: text("project_id"),
     title: text("title").notNull(),
-    at: text("at").notNull(),
+    at: ts("at").notNull(),
     location: text("location"),
-    attendees: text("attendees").notNull().default("[]"),
+    attendees: jsonb("attendees").$type<string[]>().notNull().default([]),
     notes: text("notes"),
     createdBy: text("created_by"),
     createdAt: createdAt(),
@@ -151,9 +144,9 @@ export const meetings = sqliteTable(
     index("idx_meetings_company_at").on(t.companyId, t.at),
     uniqueIndex("uq_meetings_org_external").on(t.orgId, t.externalId),
   ]
-);
+).enableRLS();
 
-export const attachments = sqliteTable(
+export const attachments = pgTable(
   "attachments",
   {
     id: id(),
@@ -168,5 +161,4 @@ export const attachments = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [index("idx_attachments_entity").on(t.entityType, t.entityId)]
-);
-
+).enableRLS();

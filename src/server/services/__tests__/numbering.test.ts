@@ -55,6 +55,15 @@ describe("nextNumber", () => {
     );
   });
 
+  it("gives distinct numbers under concurrent issuing transactions", async () => {
+    const date = new Date("2026-09-01T10:00:00+05:30");
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => db.transaction((tx) => nextNumber(tx, { docType: "AGREEMENT", date })))
+    );
+    expect(new Set(results.map((r) => r.number)).size).toBe(10);
+    expect(results.map((r) => r.sequence).sort((x, y) => x - y)).toEqual(Array.from({ length: 10 }, (_, i) => i + 1));
+  });
+
   it("does not burn a number when the issuing transaction rolls back", async () => {
     const date = new Date("2026-08-01T10:00:00+05:30");
     const first = await nextNumber(db, { docType: "LETTER", date });

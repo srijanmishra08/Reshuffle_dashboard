@@ -34,12 +34,8 @@ export type OrgSettings = OrgSettingsInput & { orgId: string; updatedAt: string 
 
 const emptyBank = { accountName: "", accountNumber: "", ifsc: "", bankName: "" };
 
-function parseBank(value: string) {
-  try {
-    return { ...emptyBank, ...(JSON.parse(value) as Record<string, string>) };
-  } catch {
-    return emptyBank;
-  }
+function parseBank(value: Record<string, string> | null | undefined) {
+  return { ...emptyBank, ...(value ?? {}) };
 }
 
 export async function getOrgSettings(orgId = "default"): Promise<OrgSettings> {
@@ -57,12 +53,12 @@ export async function getOrgSettings(orgId = "default"): Promise<OrgSettings> {
     stateCode: row?.stateCode ?? "",
     gstin: row?.gstin ?? "",
     pan: row?.pan ?? "",
-    bankDetails: parseBank(row?.bankDetails ?? "{}"),
+    bankDetails: parseBank(row?.bankDetails),
     defaultTerms: row?.defaultTerms ?? "",
     signatoryName: row?.signatoryName ?? "",
     signatoryTitle: row?.signatoryTitle ?? "",
     fyStartMonth: row?.fyStartMonth ?? 4,
-    updatedAt: row?.updatedAt ?? "",
+    updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : "",
   };
 }
 
@@ -73,12 +69,12 @@ export async function saveOrgSettings(input: OrgSettingsInput, orgId = "default"
     stateCode: input.stateCode,
     gstin: input.gstin,
     pan: input.pan,
-    bankDetails: JSON.stringify(input.bankDetails),
+    bankDetails: input.bankDetails,
     defaultTerms: input.defaultTerms,
     signatoryName: input.signatoryName,
     signatoryTitle: input.signatoryTitle,
     fyStartMonth: input.fyStartMonth,
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(),
   };
 
   await getDb()

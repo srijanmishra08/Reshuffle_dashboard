@@ -56,7 +56,7 @@ export async function listFreelancers(db: Db = getDb()) {
 
 export async function createFreelancer(input: CreateFreelancerInput, db: Db = getDb()) {
   const next: FreelancerRow = { id: `fr-${newId()}`, ...input };
-  const now = new Date().toISOString();
+  const now = new Date();
 
   await db.insert(legacyFreelancers).values({ ...next, createdAt: now, updatedAt: now });
   return next;
@@ -83,7 +83,7 @@ export async function updateFreelancer(id: string, input: UpdateFreelancerInput,
 
   await db
     .update(legacyFreelancers)
-    .set({ ...next, updatedAt: new Date().toISOString() })
+    .set({ ...next, updatedAt: new Date() })
     .where(eq(legacyFreelancers.id, id));
 
   return next;

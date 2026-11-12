@@ -46,17 +46,8 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-function parseMetadata(raw: string | null): Record<string, unknown> {
-  if (!raw) {
-    return {};
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
+function parseMetadata(raw: Record<string, unknown> | null): Record<string, unknown> {
+  return raw && typeof raw === "object" ? raw : {};
 }
 
 function readItemMetadata(metadata: Record<string, unknown> | undefined) {
@@ -67,8 +58,8 @@ function readItemMetadata(metadata: Record<string, unknown> | undefined) {
   };
 }
 
-function serialiseMetadata(metadata: Record<string, unknown>): string | null {
-  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
+function serialiseMetadata(metadata: Record<string, unknown>): Record<string, unknown> | null {
+  return Object.keys(metadata).length > 0 ? metadata : null;
 }
 
 /** Boards start empty. Demo cards are no longer seeded on read. */
@@ -104,8 +95,8 @@ export async function listPipelineItems(module: PipelineModule, db: Db = getDb()
 }
 
 export async function persistPipelineTransition(input: PersistTransitionInput, db: Db = getDb()) {
-  const now = new Date().toISOString();
-  const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+  const now = new Date();
+  const metadata = input.metadata ?? null;
 
   await db
     .insert(pipelineItems)
@@ -150,7 +141,7 @@ export async function createPipelineItem(
   if (phone) metadata.phone = phone;
   if (email) metadata.email = email;
 
-  const now = new Date().toISOString();
+  const now = new Date();
 
   await db
     .insert(pipelineItems)
@@ -217,7 +208,7 @@ export async function updatePipelineItem(
       subtitle: subtitle ?? null,
       stage,
       metadata: serialiseMetadata(metadata),
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     })
     .where(and(eq(pipelineItems.module, module), eq(pipelineItems.entityId, entityId)));
 

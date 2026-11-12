@@ -67,7 +67,7 @@ export async function createContact(db: Db, ctx: ServiceContext, companyId: stri
   }
 
   const input = parsed.data;
-  const now = new Date().toISOString();
+  const now = new Date();
   const inserted = await db
     .insert(contacts)
     .values({
@@ -115,7 +115,7 @@ export async function updateContact(db: Db, ctx: ServiceContext, companyId: stri
   if (Object.keys(changes).length > 0) {
     await db
       .update(contacts)
-      .set({ ...changes, updatedAt: new Date().toISOString() })
+      .set({ ...changes, updatedAt: new Date() })
       .where(and(eq(contacts.id, contactId), eq(contacts.orgId, ctx.orgId)));
 
     await logActivity(
@@ -140,7 +140,7 @@ export async function archiveContact(db: Db, ctx: ServiceContext, companyId: str
     return existing;
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   await db
     .update(contacts)
     .set({ archivedAt: now, updatedAt: now })

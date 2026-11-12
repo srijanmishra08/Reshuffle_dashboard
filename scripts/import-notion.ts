@@ -9,8 +9,8 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "../src/server/db/schema";
 import { importNotion, type ImportInput, type ImportKind } from "../src/server/import/notion";
 
@@ -36,8 +36,9 @@ async function main() {
   if (resolve(dir).startsWith(resolve(process.cwd()))) {
     throw new Error("Keep the Notion export outside this repository (it contains client data).");
   }
-  if (!process.env.TURSO_DATABASE_URL) {
-    throw new Error("TURSO_DATABASE_URL is required (use a dev database, not production, for dry runs).");
+  const databaseUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DIRECT_URL or DATABASE_URL is required (use --dry-run first).");
   }
 
   const csvs = findCsvs(resolve(dir));
@@ -55,7 +56,7 @@ async function main() {
     }
   }
 
-  const client = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN || undefined });
+  const client = postgres(databaseUrl, { max: 1, ssl: "require" });
   const report = await importNotion(drizzle(client, { schema }), input, { dryRun });
 
   console.log(dryRun ? "DRY RUN (nothing written)" : "IMPORT COMPLETE");
@@ -64,7 +65,7 @@ async function main() {
     console.log(`${kind}: created ${r.created}, updated ${r.updated}, skipped ${r.skipped}`);
     r.warnings.forEach((warning) => console.log(`  - ${warning}`));
   }
-  client.close();
+  await client.end();
 }
 
 main().catch((error) => {

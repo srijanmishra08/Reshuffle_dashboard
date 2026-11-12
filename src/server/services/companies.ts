@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -59,9 +59,9 @@ export async function listCompanies(db: Db, ctx: ServiceContext, rawQuery: unkno
     const pattern = `%${query.q.replace(/[%_]/g, "")}%`;
     conditions.push(
       or(
-        like(companies.name, pattern),
-        like(companies.legalName, pattern),
-        like(companies.gstin, pattern)
+        ilike(companies.name, pattern),
+        ilike(companies.legalName, pattern),
+        ilike(companies.gstin, pattern)
       )!
     );
   }
@@ -110,7 +110,7 @@ export async function createCompany(db: Db, ctx: ServiceContext, raw: unknown) {
     return fail("VALIDATION", "Unknown vertical");
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   const inserted = await db
     .insert(companies)
     .values({
@@ -170,7 +170,7 @@ export async function updateCompany(db: Db, ctx: ServiceContext, id: string, raw
 
   await db
     .update(companies)
-    .set({ ...changes, updatedAt: new Date().toISOString() })
+    .set({ ...changes, updatedAt: new Date() })
     .where(and(eq(companies.id, id), eq(companies.orgId, ctx.orgId)));
 
   const lifecycleChanged = patch.lifecycle && patch.lifecycle !== existing.data.lifecycle;
@@ -198,7 +198,7 @@ export async function archiveCompany(db: Db, ctx: ServiceContext, id: string) {
     return existing;
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   await db
     .update(companies)
     .set({ archivedAt: now, updatedAt: now })

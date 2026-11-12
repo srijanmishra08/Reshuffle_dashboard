@@ -47,14 +47,14 @@ export async function createProject(db: Db, actorId: string, raw: unknown) {
   }
 
   const input = parsed.data;
-  const now = new Date().toISOString();
+  const now = new Date();
   const project = {
     id: newId(),
     clientId: input.clientId,
     name: input.name,
     description: input.description ?? null,
     status: "TODO",
-    deadline: input.deadline ?? null,
+    deadline: input.deadline ? new Date(input.deadline) : null,
     createdAt: now,
     updatedAt: now,
   };

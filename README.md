@@ -1,113 +1,32 @@
-# ReShuffle Dashboard
+# ReShuffle OS
 
-ReShuffle Dashboard is a full-stack Business Operating System scaffold built with a modular architecture.
+The operating system for Reshuffle OPC: CRM, sales, scopes, documents, invoices, projects, freelancers, finance, marketing, events and docs in one logged-in app. See `plan.md` (what and why), `development-plan.md` (build order) and `handoff.md` (current state, run steps, conventions, and the work queue for automated runs).
 
 ## Stack
 
-- Frontend: Next.js (App Router) + TailwindCSS
-- API: Next.js Route Handlers + tRPC endpoint scaffold
-- ORM / DB: Prisma + PostgreSQL
-- Queue and workers: BullMQ + Redis
-- Validation: Zod
+- Next.js 16 (App Router, `src/proxy.ts`), React 19, Tailwind
+- Supabase Postgres through Drizzle ORM (server-side only; row level security is on for every table with no policies)
+- Better Auth (Google sign-in, email allowlist, roles ADMIN / MANAGER / MEMBER / FREELANCER)
+- Zod validation, service layer returning `{ ok, data } | { ok: false, error, code }`
+- Vitest (tests run on in-memory Postgres via PGlite)
 
-## Modules Included
-
-1. Client CRM
-2. Project Management Dashboard
-3. Social Media Planning and Calendar
-4. Client Outreach Tracker
-5. App Development Cycle
-6. Freelancers Status Board
-7. Finance Sheet
-8. Event Dashboard
-9. Documentation System
-
-## Quick Start
-
-1. Install dependencies:
+## Run locally
 
 ```bash
 npm install
+cp .env.example .env      # fill in DATABASE_URL, DIRECT_URL, BETTER_AUTH_*, GOOGLE_*
+npm run db:migrate        # applies ./drizzle migrations using DIRECT_URL
+npm run dev               # http://localhost:3000
 ```
 
-2. Copy environment file:
+Checks: `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
 
-```bash
-cp .env.example .env
-```
+## Database
 
-3. Generate Prisma client:
+- `DATABASE_URL`: Supabase transaction pooler (port 6543). Used at runtime. Prepared statements are off.
+- `DIRECT_URL`: Supabase session pooler (port 5432). Used only by `npm run db:migrate` and `drizzle-kit`.
+- Schema lives in `src/server/db/schema/*`. Change it, run `npm run db:generate`, review the SQL in `drizzle/`, commit. New tables must call `.enableRLS()`.
 
-```bash
-npm run prisma:generate
-```
+## Deployment
 
-4. Run database migrations:
-
-```bash
-npm run prisma:migrate
-```
-
-5. Start web app:
-
-```bash
-npm run dev
-```
-
-6. Start automation worker (separate terminal):
-
-```bash
-npm run worker:automation
-```
-
-## API Endpoints (Initial)
-
-- `GET /api/health`
-- `GET|POST /api/clients`
-- `GET|POST /api/projects`
-- `GET|POST /api/tasks`
-- `GET /api/activity?limit=20`
-- `GET|POST /api/social/entries`
-- `PATCH|DELETE /api/social/entries/:id`
-- `POST /api/automation/trigger`
-- `GET|POST /api/trpc/[trpc]`
-
-## Important Paths
-
-- Prisma schema: `prisma/schema.prisma`
-- Module pages: `src/app/*/page.tsx`
-- REST APIs: `src/app/api/*`
-- Business services: `src/server/services/*`
-- Worker: `src/workers/automation-worker.ts`
-- Architecture docs: `docs/*`
-
-## Deployment Targets
-
-- App: Vercel
-- PostgreSQL: Supabase or Neon
-- Redis: Upstash
-
-## Shared Persistence on Vercel
-
-To make edits/additions visible to every user and persistent across deploys:
-
-1. Provision a Turso database and generate an auth token.
-2. In Vercel project settings, set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
-3. Configure PostgreSQL (`DATABASE_URL`, `DIRECT_URL`) only if you still need legacy Prisma tooling.
-4. (Optional for queues) set `REDIS_URL`.
-5. If you are also using Prisma-backed modules, run Prisma migrations against your PostgreSQL database:
-
-```bash
-npm run prisma:migrate
-```
-
-6. Redeploy the app.
-
-The app APIs now read/write through Turso-backed storage for shared, persistent data across users on the Vercel link.
-
-## Next Build Steps
-
-1. Add authentication and role guards for Admin, Manager, Freelancer.
-2. Replace mock module panels with live data queries and mutation forms.
-3. Add queue processors for WhatsApp, email, and social integrations.
-4. Add notification center and global search.
+Vercel deploys from `main`. Production env vars: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BOOTSTRAP_ADMIN_EMAILS`. Apply new migrations (`npm run db:migrate` with `DIRECT_URL`) before a deploy that adds files under `drizzle/`.

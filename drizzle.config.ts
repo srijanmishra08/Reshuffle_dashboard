@@ -1,11 +1,11 @@
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  dialect: "turso",
+  dialect: "postgresql",
   schema: "./src/server/db/schema/index.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.TURSO_DATABASE_URL ?? "file:./local.db",
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    // Migrations use the session-mode connection (DIRECT_URL), not the transaction pooler.
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "postgresql://localhost:5432/postgres",
   },
 });

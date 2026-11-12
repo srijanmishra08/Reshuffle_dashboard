@@ -158,7 +158,7 @@ export async function importNotion(
       report.products.created++;
       const id = `planned:${slug(name)}`;
       if (!dryRun) {
-        const now = new Date().toISOString();
+        const now = new Date();
         const inserted = await db
           .insert(verticals)
           .values({ orgId, name, description: pick(rec, ["description", "notes"]), externalId: `notion:products:${slug(name)}`, createdAt: now, updatedAt: now })
@@ -221,12 +221,12 @@ export async function importNotion(
       if (companyId) {
         report.clients.updated++;
         if (!dryRun) {
-          await db.update(companies).set({ ...values, updatedAt: new Date().toISOString() }).where(eq(companies.id, companyId));
+          await db.update(companies).set({ ...values, updatedAt: new Date() }).where(eq(companies.id, companyId));
         }
       } else {
         report.clients.created++;
         if (!dryRun) {
-          const now = new Date().toISOString();
+          const now = new Date();
           const inserted = await db
             .insert(companies)
             .values({ orgId, externalId, ...values, createdAt: now, updatedAt: now })
@@ -262,9 +262,9 @@ export async function importNotion(
 
         if (!dryRun) {
           if (existingContact[0]) {
-            await db.update(contacts).set({ ...contactValues, updatedAt: new Date().toISOString() }).where(eq(contacts.id, existingContact[0].id));
+            await db.update(contacts).set({ ...contactValues, updatedAt: new Date() }).where(eq(contacts.id, existingContact[0].id));
           } else {
-            const now = new Date().toISOString();
+            const now = new Date();
             await db.insert(contacts).values({ orgId, companyId, externalId: contactExternalId, ...contactValues, createdAt: now, updatedAt: now });
           }
         }
@@ -285,14 +285,14 @@ export async function importNotion(
         continue;
       }
 
-      const at = new Date(parsedTime).toISOString();
+      const at = new Date(parsedTime);
       const companyName = cleanRelation(pick(rec, ["client", "company", "clients", "account"]));
       const companyId = companyName ? companyByName.get(companyName.toLowerCase()) : undefined;
       if (companyName && !companyId) {
         report.meetings.warnings.push(`meetings row ${index + 2}: client not found, meeting left unlinked`);
       }
 
-      const externalId = `notion:meetings:${slug(title)}:${at.slice(0, 10)}`;
+      const externalId = `notion:meetings:${slug(title)}:${at.toISOString().slice(0, 10)}`;
       const attendees = pick(rec, ["attendees", "people", "participants"])
         .split(",")
         .map((value) => cleanRelation(value))
@@ -302,7 +302,7 @@ export async function importNotion(
         at,
         companyId: companyId && !companyId.startsWith("planned:") ? companyId : null,
         location: pick(rec, ["location", "link", "place"]) || null,
-        attendees: JSON.stringify(attendees),
+        attendees,
         notes: pick(rec, ["notes", "summary"]) || null,
       };
 
@@ -315,12 +315,12 @@ export async function importNotion(
       if (found[0]) {
         report.meetings.updated++;
         if (!dryRun) {
-          await db.update(meetings).set({ ...values, updatedAt: new Date().toISOString() }).where(eq(meetings.id, found[0].id));
+          await db.update(meetings).set({ ...values, updatedAt: new Date() }).where(eq(meetings.id, found[0].id));
         }
       } else {
         report.meetings.created++;
         if (!dryRun) {
-          const now = new Date().toISOString();
+          const now = new Date();
           await db.insert(meetings).values({ orgId, externalId, ...values, createdAt: now, updatedAt: now });
         }
       }

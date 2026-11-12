@@ -14,7 +14,7 @@ type LogActivityInput = {
 /** Audit trail. A logging failure never breaks the request. */
 export async function logActivity(input: LogActivityInput, db?: Db) {
   const id = newId();
-  const createdAt = new Date().toISOString();
+  const createdAt = new Date();
 
   try {
     await (db ?? getDb()).insert(schema.activityLogs).values({
@@ -24,7 +24,7 @@ export async function logActivity(input: LogActivityInput, db?: Db) {
       module: input.module,
       entityType: input.entityType,
       entityId: input.entityId,
-      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      metadata: input.metadata ?? null,
       createdAt,
     });
 
@@ -60,16 +60,6 @@ export async function getRecentActivity(limit = 20, db?: Db) {
       .limit(limit);
 
     return rows.map((row) => {
-      let metadata: Record<string, unknown> | null = null;
-
-      if (row.metadata) {
-        try {
-          metadata = JSON.parse(row.metadata) as Record<string, unknown>;
-        } catch {
-          metadata = null;
-        }
-      }
-
       return {
         id: row.id,
         actorId: row.actorId,
@@ -77,7 +67,7 @@ export async function getRecentActivity(limit = 20, db?: Db) {
         module: row.module,
         entityType: row.entityType,
         entityId: row.entityId,
-        metadata,
+        metadata: row.metadata ?? null,
         createdAt: row.createdAt,
       };
     });

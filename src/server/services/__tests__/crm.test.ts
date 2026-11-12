@@ -23,6 +23,8 @@ beforeAll(async () => {
 });
 afterAll(() => cleanup());
 
+const iso = (value: unknown) => (value ? new Date(value as string | Date).toISOString() : null);
+
 function must<T>(result: { ok: true; data: T } | { ok: false; error: string }): T {
   if (!result.ok) throw new Error(result.error);
   return result.data;
@@ -129,7 +131,7 @@ describe("interactions and follow-ups", () => {
       })
     );
 
-    expect(must(await getCompany(db, ctx, company.id)).nextActionAt).toBe(soon);
+    expect(iso(must(await getCompany(db, ctx, company.id)).nextActionAt)).toBe(soon);
     expect(must(await listDueFollowUps(db, ctx)).map((f) => f.companyId)).toContain(company.id);
 
     must(await setNextActionDone(db, ctx, company.id, interaction.id, { done: true }));

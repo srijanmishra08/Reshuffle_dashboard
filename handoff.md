@@ -2,7 +2,7 @@
 
 This is for whoever picks up the build next, whether a developer, Srijan, or a coding agent. Read it first, then `plan.md` (what we are building and why) and `development-plan.md` (the order to build it in).
 
-**As of:** 2026-11-12. Branch `phase-0-1-foundations-crm` (Phase 0 and Phase 1 built, not yet merged or deployed). Last commit on `main`: `72cc7c6`.
+**As of:** 2026-11-12. Phase 0 and Phase 1 are on `main` and deployed; the database is Supabase Postgres.
 
 **Owner:** Srijan (founder, Reshuffle OPC, Raipur).
 
@@ -24,7 +24,7 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 | Piece | State | Notes |
 |---|---|---|
 | Auth | **Done (Phase 0)** | Better Auth, Google sign-in, allowlist, roles. `src/server/auth.ts`, `src/server/authz.ts`, `src/proxy.ts`. Every `/api/*` route calls `requireStaff()` or `requireRole()`. |
-| Database layer | **Done (Phase 0)** | Drizzle on Turso. Schema in `src/server/db/schema/*`, migrations in `drizzle/`. `src/lib/turso.ts` no longer creates tables. |
+| Database layer | **Done** | Drizzle on Supabase Postgres (`postgres-js`, transaction pooler). Schema in `src/server/db/schema/*`, migrations in `drizzle/`. Row level security is enabled on every table. |
 | Money, GST, numbering | **Done, tested** | `src/server/lib/money.ts`, `src/server/services/gst.ts`, `src/server/services/numbering.ts`. Not yet used by any UI (invoices are Phase 2). |
 | Settings (org, GSTIN, bank, signatory) | **Done, no uploads** | `/settings`, ADMIN only. Logo and signature uploads wait for Phase 2 (Vercel Blob). |
 | CRM (Phase 1) | **Built** | Companies, contacts, interactions, meetings, follow-ups, verticals. `/crm` (table + lifecycle board), `/crm/[id]`. APIs under `/api/companies`, `/api/followups`, `/api/verticals`. |
@@ -53,14 +53,14 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 
 ```bash
 npm install
-cp .env.example .env      # defaults to a local SQLite file; Google keys needed to sign in
+cp .env.example .env      # fill DATABASE_URL, DIRECT_URL, BETTER_AUTH_*, GOOGLE_*
 npm run db:migrate        # creates/updates the schema (also seeds the 8 verticals)
 npm run dev               # http://localhost:3000
 ```
 
 - Sign-in is Google only. In the Google Cloud console add the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google`. Put your email in `BOOTSTRAP_ADMIN_EMAILS` to become ADMIN on first sign-in; add others as rows in `allowed_emails` (email, role).
-- **Production:** run `npm run db:migrate` against the production Turso DB before deploying this branch. The baseline migration uses `IF NOT EXISTS`, so existing tables and rows are untouched. Set the new env vars on Vercel (see `.env.example`).
-- Use a **separate Turso database for local development**. Never point local dev at production.
+- **Production:** new files under `drizzle/` must be applied (`npm run db:migrate` with `DIRECT_URL`) before the deploy that needs them. Set env vars on Vercel (see `.env.example`).
+- Use a **separate Supabase project (or branch) for local development** and for experiments. Never point experiments at production. Tests do not need a database: they run on in-memory Postgres (PGlite).
 - Checks: `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
 - Schema change flow: edit `src/server/db/schema/*`, run `npm run db:generate`, review the SQL, commit it.
 - Notion import: `npx tsx scripts/import-notion.ts <export-dir outside repo> --dry-run`, then without `--dry-run`.
@@ -72,7 +72,7 @@ npm run dev               # http://localhost:3000
 1. **Next.js 16.2 is not the Next.js you know.** `AGENTS.md` says to read `node_modules/next/dist/docs/` before writing routing, proxy/middleware, caching or route-handler code.
    - `middleware.ts` is replaced by `proxy.ts` in this generation. Confirm in the bundled docs.
    - Route handlers here set `export const dynamic = "force-dynamic"`. Keep doing that for data routes.
-2. **Two data layers.** Ignore Prisma. All live data is in Turso through `src/lib/turso.ts`, which runs `CREATE TABLE IF NOT EXISTS` on cold start. Phase 0 replaces this with Drizzle migrations. The first migration must keep the existing tables and rows.
+2. **One data layer.** Everything goes through Drizzle (`getDb()` in `src/server/db/client.ts`). Do not add raw SQL strings or a second client. Timestamps are `timestamptz` read and written as JS `Date`; JSON columns are `jsonb`.
 3. **The repo is public.**
    - No client names, phone numbers, emails, amounts, GSTIN, PAN, bank details or Notion exports in commits, seeds, fixtures, tests or screenshots.
    - Seed data must be obviously fake.
@@ -87,8 +87,8 @@ npm run dev               # http://localhost:3000
 8. **Notion API limits.** The workspace's query allowance ran out after about 15 queries on 2026-11-12. Migrate from a **CSV export**, not the API.
 9. **Next 16 facts verified from the bundled docs:** the file is `src/proxy.ts` exporting `proxy` (not `middleware`); route handler `params` is a `Promise`; the proxy only does an optimistic cookie check, so real authorisation lives in the route handlers (`requireRole`). Public paths are listed at the top of `src/proxy.ts` (add `/p/` pages there in Phase 3; `/api/cron` and `/p/` are already allowed through).
 10. **React compiler lint** forbids calling a state-setting function synchronously inside `useEffect`. Wrap the call in `setTimeout(..., 0)` (see `company-detail.tsx`).
-11. **Concurrency tests on SQLite files:** the embedded libsql client throws `SQLITE_BUSY` for parallel interactive transactions, so `numbering.test.ts` tests parallel callers on the single atomic `UPDATE ... RETURNING` plus a rollback test. Real Turso is not affected the same way, but still allocate numbers inside the issuing transaction.
-12. **Run `npm run db:migrate` again for the new `0002` migration** (normalises legacy timestamps to ISO; safe to re-run). Boards that were never opened in production now start empty because demo seeding on read was removed.
+11. **Numbering and concurrency:** `nextNumber` must run inside the issuing transaction (`db.transaction`). The tests run on PGlite, which serialises connections, so a real-Postgres concurrency run is still worth doing once before first invoice.
+12. **Applying migrations is a human step.** The deployed app only has `DATABASE_URL` (transaction pooler). Migrations need `DIRECT_URL`, which automated runs do not have. A PR that adds a file under `drizzle/` must not be merged until Srijan (or an interactive session) has run `npm run db:migrate` against production.
 13. **Legacy leftovers:** the `clients` table and the `crm`/`outreach` entries in `pipelineModels` still exist. Delete them after the Notion import is verified and deals land (Phase 3).
 14. **Disk:** this repo lives in iCloud Drive. `node_modules` and `.next` sync slowly and can fill the disk. Prefer a non-iCloud folder for development.
 
@@ -132,7 +132,7 @@ npm run dev               # http://localhost:3000
 
 These are summarised here; the full reasoning is in `plan.md` §4.
 
-1. Turso is the only database today; Prisma is dropped. **Being revisited:** `docs/SUPABASE_MIGRATION_PLAN.md` plans a move to Supabase Postgres (plan only, nothing built, needs connection strings from Srijan).
+1. Supabase Postgres is the only database, accessed server-side through Drizzle. Prisma is dropped. Migrated from the previous database on 2026-11-12.
 2. Drizzle is used for schema and migrations.
 3. Better Auth with Google sign-in, an email allowlist and four roles (ADMIN, MANAGER, MEMBER, FREELANCER).
 4. REST route handlers + TanStack Query. tRPC is dropped.
@@ -143,8 +143,6 @@ These are summarised here; the full reasoning is in `plan.md` §4.
 9. Notion is migrated from a CSV export.
 10. Files go in Vercel Blob.
 11. `org_id` is on every table from day one.
-
-`docs/ROLL_OUT_PLAN.md` and `docs/ARCHITECTURE.md` describe the original scaffold and are superseded by `plan.md` and `development-plan.md`. Update or delete them in Phase 0.
 
 ## 8. Open questions for Srijan
 
@@ -161,10 +159,10 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 ## 9. Start here (next session)
 
-1. Read `AGENTS.md`, then this file.
-2. Get the branch merged: set up Google OAuth, add env vars on Vercel, run `npm run db:migrate` on production, deploy, sign in once as admin, and add the other team emails to `allowed_emails`.
-3. Run the Notion import with `--dry-run` against the real CSV export and fix the column alias lists in `src/server/import/notion.ts`. Then import for real and click through `/crm`.
-4. Start **Phase 2** (document engine, invoices, work orders). Answer the open questions in section 8 first, especially the last invoice number.
+1. Read `AGENTS.md`, then this file, then section 12 (work queue).
+2. If you are an automated run, follow section 12 exactly. If you are an interactive session, ask Srijan what to prioritise; the queue in section 12 is the default.
+3. Sign-in: Google with an allowlist. `BOOTSTRAP_ADMIN_EMAILS` holds the two admin emails; add team members as rows in `allowed_emails`.
+4. Run the Notion import with `--dry-run` against the real CSV export (human step: the export must stay outside the repo) and fix the column alias lists in `src/server/import/notion.ts`.
 5. Update this file at the end of every session.
 
 ---
@@ -173,10 +171,10 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 | Date | Who | What |
 |---|---|---|
-| 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. No code changed. |
-| 2026-11-12 | Claude with Srijan | Supabase migration Step 1 done (see `docs/SUPABASE_MIGRATION_PLAN.md`): all raw SQL ported to Drizzle services, timestamps normalised (migration 0002), demo seeding removed, 46 tests. Committed locally on `main`, not pushed. Next: Step 2 (Postgres schema), which needs the pooler connection string from Srijan. |
-| 2026-11-12 | Claude with Srijan | Merged Phase 0 and 1 straight to `main` (`cf8651a`, as asked, no PR) and wrote `docs/SUPABASE_MIGRATION_PLAN.md`. Pushing to `main` may auto-deploy to Vercel: production needs the new env vars and `npm run db:migrate` or the deployed app will not work. Five Sonnet reviewers' findings (security, database, TypeScript, plan audit) are not yet fixed; main ones: allowlist removal does not revoke existing users, polling overwrites unsaved edits, demo-seed on board read path, timestamp format mixing, missing route-level tests. |
-| 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients/products/meetings). 37 tests pass; lint, tsc and build clean; API verified end to end with a signed test session. **Not done:** logo/signature uploads, AES crypto helper (Phase 4), dropping legacy `clients` table, real Notion import run, browser click-through (Google-only login), deploy. `PipelineBoard` was not reused for the lifecycle board; `lifecycle-board.tsx` is a small dedicated board because companies are real rows, not `pipeline_items`. |
+| 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. |
+| 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients, products, meetings). Merged straight to `main` as asked. |
+| 2026-11-12 | Claude with Srijan | Ported all raw SQL to Drizzle services, removed demo seeding, then moved the whole database to Supabase Postgres: new pg schema (timestamptz, jsonb, RLS on every table), postgres-js client on the transaction pooler, PGlite tests (49 pass), baseline + seed migrations applied to Supabase, existing data copied and verified id by id (289 rows, 8 tables), previous database references removed from code and docs. |
+| 2026-11-12 | Claude with Srijan | Auth set up on Vercel (Better Auth secret and URL, Google OAuth client, admin emails). Four Sonnet reviewers audited Phase 0 and 1; their open findings are queued in section 12. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 
@@ -185,3 +183,59 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 - AI helpers: draft a scope from diagnosis answers, summarise a call into an interaction, suggest modules by vertical
 - Event ticketing and payment links (Razorpay)
 - Mobile-friendly freelancer view as a PWA
+
+---
+
+## 12. Automated runs (hourly scheduler)
+
+An hourly scheduled task continues development. **Each run does exactly one task from the queue below, then stops.** Interactive sessions can use the same queue.
+
+### Run protocol
+
+1. `git pull --ff-only` on `main`. Read `AGENTS.md`, this file, `plan.md` and the relevant section of `development-plan.md`.
+2. Pick the **first unchecked task** in the queue that is not marked `BLOCKED`. If every remaining task is blocked, append a line to the session log saying so and stop.
+3. Work on a branch named `auto/<task-slug>`. Keep the change small and in the existing style (services return `{ ok, data } | { ok: false, error, code }`, Zod per input, `logActivity` on mutations, integer paise, `.enableRLS()` on new tables, tests with PGlite).
+4. Before committing: `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build` must all pass. If a check fails and you cannot fix it in the same run, do not commit; write what failed in the session log and stop.
+5. Commit, push the branch and open a pull request into `main`. **Do not merge and do not push to `main`.** Every merge deploys to production. Srijan reviews and merges (he can change this rule by editing this line).
+6. Tick the task in the queue, add a one-row entry to the session log (date, "automated run", what changed, anything the next run must know), commit that to the same branch.
+
+### Hard rules
+
+- The repo is public. No real client names, phones, emails, amounts, GSTIN, PAN or bank details anywhere. Fake data only.
+- Never print, log or commit secrets. Never edit `.env` files or Vercel settings.
+- Never run migrations against production and never connect to the production database. Tests run on in-memory Postgres.
+- A task that adds a file under `drizzle/` must say so at the top of the PR description: "Needs `npm run db:migrate` on production before merge."
+- Do not start a task that is marked `BLOCKED`. Do not guess answers to the open questions in section 8.
+- If something looks unsafe (money maths, auth, data loss), stop and write it in the session log instead of improvising.
+
+### Queue
+
+**A. Review findings (do these first)**
+
+- [ ] A1. Allowlist revocation: in `src/server/auth.ts` and `src/server/authz.ts`, re-check `resolveRoleForEmail` when a session is created and in `getSessionUser`; if the email is no longer allowed treat the user as inactive, otherwise sync the role. Add tests.
+- [ ] A2. `src/proxy.ts`: match public prefixes on path boundaries (`p === path || path.startsWith(p + "/")`); reject `\` in the login `next` param; fail fast at startup if `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID` or `GOOGLE_CLIENT_SECRET` are missing in production.
+- [ ] A3. Role-gate pages: `/settings` must check the session role on the server (not only the API).
+- [ ] A4. Route-level tests with a mocked session for every API group: 401 logged out, 403 wrong role (including FREELANCER), 400 invalid input, 404 unknown id, org isolation.
+- [ ] A5. UI robustness: `crm-workspace.tsx` and `company-detail.tsx` ignore out-of-order responses (AbortController or request counter); polling must not overwrite an in-flight optimistic move or an unsaved edit (`freelancers/page.tsx`); `pipeline-board.tsx` resets state when `module` changes and must not clear the create form when the request failed.
+- [ ] A6. `numbering.ts`: accept a transaction only (type `Tx`); carry prefix and padding forward at financial-year rollover; validate `rateBps` is an even integer in `gst.ts` and bound per-line amounts; make `toPaise` accept strings only.
+- [ ] A7. Small service fixes: reject archived contacts in `createInteraction`; wrap create-interaction (insert, touch company, log) in one transaction; guard `settings.ts` bank parsing; replace `.catch(() => undefined)` swallowing in the CRM UI with a visible message.
+- [ ] A8. Add `.enableRLS()` check as a CI step (a test already asserts it; make sure new tables are covered) and add Supabase advisors notes to the PR description when a migration is included.
+
+**B. Phase 2: document engine, invoices, work orders** (`development-plan.md` Phase 2, one slice per run)
+
+- [ ] B1. Register Noto Sans with `@react-pdf/renderer`, add the shared PDF parts in `src/server/documents/parts/` (letterhead, party block, items table, tax summary, amount in words, bank block, signature block, terms) with a render test that checks the ₹ glyph. No schema change.
+- [ ] B2. Schema for `documents`, `document_templates`, `invoices`, `invoice_items`, `payments`, `credit_notes` (with `org_id`, RLS) and the migration. **Needs migration on production before merge.**
+- [ ] B3. Invoice service: create draft, edit draft, issue (transaction: number via `nextNumber`, freeze `snapshot_json`, status, audit log, idempotency key), record payment, cancel via credit note, `markOverdue`. Tests for tax modes, numbering, immutability (409), partial then full payment.
+- [ ] B4. Invoice API routes (`/api/invoices*`) with role checks (ADMIN full, MANAGER create/issue, MEMBER read).
+- [ ] B5. PDF template `invoice/v1` and `/api/pdf/documents/[id]`; credit note template.
+- [ ] B6. Invoice UI: `/invoices` list with status filters and receivables total, `/invoices/new` and `/invoices/[id]` with live preview.
+- [ ] B7. Work orders: schema (migration), service, API, UI, template.
+- [ ] B8. Letterhead letters: template and "New letter" page.
+- [ ] B9. `/api/cron/daily` (protected by `CRON_SECRET`) running `markOverdue`, plus `vercel.json` cron entry.
+- [ ] B10. BLOCKED until a human provides `BLOB_READ_WRITE_TOKEN`: logo and signature uploads in Settings.
+
+**C. Later phases:** continue in the order of `development-plan.md`: Phase 3 (deals, scopes, public accept page), Phase 4 (people documents), Phase 5 (projects and freelancers), Phase 6 (finance), Phase 7 (marketing, events, goals, docs), Phase 8 (overview, search, notifications). Break each into slices like section B and add them here before starting.
+
+### Blocked on a human (do not attempt)
+
+- Vercel Blob token, CA sign-off on the invoice PDF and tax rules, the last invoice number used, the real Notion export, GST/SAC confirmation, any change to Vercel or Google settings, applying migrations to production.

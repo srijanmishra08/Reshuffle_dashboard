@@ -86,7 +86,7 @@ export async function createInteraction(db: Db, ctx: ServiceContext, companyId: 
     return fail("VALIDATION", "A next-action date needs a description");
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   const inserted = await db
     .insert(interactions)
     .values({
@@ -95,9 +95,9 @@ export async function createInteraction(db: Db, ctx: ServiceContext, companyId: 
       contactId: input.contactId ?? null,
       type: input.type,
       summary: input.summary,
-      at: input.at ? new Date(input.at).toISOString() : now,
+      at: input.at ? new Date(input.at) : now,
       nextAction: input.nextAction ?? null,
-      nextActionAt: input.nextActionAt ? new Date(input.nextActionAt).toISOString() : null,
+      nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
       createdBy: ctx.userId,
       createdAt: now,
       updatedAt: now,
@@ -149,7 +149,7 @@ export async function setNextActionDone(
     return fail("CONFLICT", "This interaction has no next action");
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   await db
     .update(interactions)
     .set({ nextActionDoneAt: parsed.data.done ? now : null, updatedAt: now })
@@ -170,9 +170,9 @@ export async function setNextActionDone(
   return getInteraction(db, ctx, companyId, interactionId);
 }
 
-/** Pending next actions due on or before `until` (default: end of today UTC+0 is fine for a day list). */
+/** Pending next actions due on or before `until` (default: the next 24 hours, including overdue). */
 export async function listDueFollowUps(db: Db, ctx: ServiceContext, until?: Date) {
-  const cutoff = (until ?? new Date(Date.now() + 24 * 60 * 60 * 1000)).toISOString();
+  const cutoff = until ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const rows = await db
     .select({
@@ -218,7 +218,7 @@ export async function listMeetings(db: Db, ctx: ServiceContext, companyId: strin
       title: row.title,
       at: row.at,
       location: row.location,
-      attendees: JSON.parse(row.attendees) as string[],
+      attendees: row.attendees,
       notes: row.notes,
     }))
   );
@@ -236,16 +236,16 @@ export async function createMeeting(db: Db, ctx: ServiceContext, companyId: stri
   }
 
   const input = parsed.data;
-  const now = new Date().toISOString();
+  const now = new Date();
   const inserted = await db
     .insert(meetings)
     .values({
       orgId: ctx.orgId,
       companyId,
       title: input.title,
-      at: new Date(input.at).toISOString(),
+      at: new Date(input.at),
       location: input.location ?? null,
-      attendees: JSON.stringify(input.attendees ?? []),
+      attendees: input.attendees ?? [],
       notes: input.notes ?? null,
       createdBy: ctx.userId,
       createdAt: now,

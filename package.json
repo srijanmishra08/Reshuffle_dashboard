@@ -14,7 +14,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.2",
     "@paralleldrive/cuid2": "^3.3.0",
     "@tanstack/react-query": "^5.95.2",
     "better-auth": "^1.7.22",
@@ -22,12 +21,14 @@
     "drizzle-orm": "^0.45.4",
     "lucide-react": "^1.0.1",
     "next": "16.2.1",
+    "postgres": "^4.1.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22.20.5",
     "@types/react": "^19",

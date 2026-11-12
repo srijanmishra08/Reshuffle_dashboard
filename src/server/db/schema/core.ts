@@ -1,26 +1,26 @@
-import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { ts } from "./_cols";
 
-const ts = (name: string) => text(name).notNull().default(sql`CURRENT_TIMESTAMP`);
+const created = () => ts("created_at").notNull().defaultNow();
+const updated = () => ts("updated_at").notNull().defaultNow();
 
 // ---------------------------------------------------------------------------
-// Legacy tables. Columns match what `src/lib/turso.ts` used to create at runtime
-// so production rows survive the move to migrations. Do not change columns here
-// without a migration plan; they are replaced by real domain tables in later phases.
+// Early-module tables (clients, projects, tasks, boards, social, freelancers).
+// They are replaced by real domain tables in later phases.
 // ---------------------------------------------------------------------------
 
-export const legacyClients = sqliteTable("clients", {
+export const legacyClients = pgTable("clients", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   company: text("company"),
   notes: text("notes"),
   stage: text("stage").notNull().default("LEAD"),
   status: text("status").notNull().default("ACTIVE"),
-  createdAt: ts("created_at"),
-  updatedAt: ts("updated_at"),
-});
+  createdAt: created(),
+  updatedAt: updated(),
+}).enableRLS();
 
-export const projects = sqliteTable(
+export const projects = pgTable(
   "projects",
   {
     id: text("id").primaryKey(),
@@ -28,14 +28,14 @@ export const projects = sqliteTable(
     name: text("name").notNull(),
     description: text("description"),
     status: text("status").notNull().default("TODO"),
-    deadline: text("deadline"),
-    createdAt: ts("created_at"),
-    updatedAt: ts("updated_at"),
+    deadline: ts("deadline"),
+    createdAt: created(),
+    updatedAt: updated(),
   },
   (t) => [index("idx_projects_client").on(t.clientId)]
-);
+).enableRLS();
 
-export const tasks = sqliteTable(
+export const tasks = pgTable(
   "tasks",
   {
     id: text("id").primaryKey(),
@@ -45,14 +45,14 @@ export const tasks = sqliteTable(
     details: text("details"),
     status: text("status").notNull().default("TODO"),
     priority: text("priority").notNull().default("MEDIUM"),
-    dueDate: text("due_date"),
-    createdAt: ts("created_at"),
-    updatedAt: ts("updated_at"),
+    dueDate: ts("due_date"),
+    createdAt: created(),
+    updatedAt: updated(),
   },
   (t) => [index("idx_tasks_project").on(t.projectId)]
-);
+).enableRLS();
 
-export const activityLogs = sqliteTable(
+export const activityLogs = pgTable(
   "activity_logs",
   {
     id: text("id").primaryKey(),
@@ -61,24 +61,24 @@ export const activityLogs = sqliteTable(
     module: text("module").notNull(),
     entityType: text("entity_type").notNull(),
     entityId: text("entity_id").notNull(),
-    metadata: text("metadata"),
-    createdAt: ts("created_at"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: created(),
   },
-  (t) => [index("idx_activity_module_created").on(t.module, t.createdAt)]
-);
+  (t) => [index("idx_activity_module_created").on(t.module, t.createdAt.desc())]
+).enableRLS();
 
-export const automationRules = sqliteTable("automation_rules", {
+export const automationRules = pgTable("automation_rules", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   trigger: text("trigger").notNull(),
-  conditionJson: text("condition_json"),
-  actionJson: text("action_json").notNull(),
-  enabled: integer("enabled").notNull().default(1),
-  createdAt: ts("created_at"),
-  updatedAt: ts("updated_at"),
-});
+  conditionJson: jsonb("condition_json"),
+  actionJson: jsonb("action_json").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: created(),
+  updatedAt: updated(),
+}).enableRLS();
 
-export const pipelineItems = sqliteTable(
+export const pipelineItems = pgTable(
   "pipeline_items",
   {
     id: text("id").primaryKey(),
@@ -88,32 +88,33 @@ export const pipelineItems = sqliteTable(
     title: text("title").notNull(),
     subtitle: text("subtitle"),
     stage: text("stage").notNull(),
-    metadata: text("metadata"),
-    createdAt: ts("created_at"),
-    updatedAt: ts("updated_at"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: created(),
+    updatedAt: updated(),
   },
   (t) => [
     uniqueIndex("idx_pipeline_items_module_entity").on(t.module, t.entityId),
     index("idx_pipeline_items_module_stage").on(t.module, t.stage),
   ]
-);
+).enableRLS();
 
-export const socialEntries = sqliteTable(
+export const socialEntries = pgTable(
   "social_entries",
   {
     id: text("id").primaryKey(),
     title: text("title").notNull(),
     script: text("script").notNull().default(""),
     platform: text("platform").notNull(),
+    /** Calendar day, YYYY-MM-DD. */
     date: text("date").notNull(),
     status: text("status").notNull(),
-    createdAt: ts("created_at"),
-    updatedAt: ts("updated_at"),
+    createdAt: created(),
+    updatedAt: updated(),
   },
   (t) => [index("idx_social_entries_date").on(t.date)]
-);
+).enableRLS();
 
-export const legacyFreelancers = sqliteTable(
+export const legacyFreelancers = pgTable(
   "freelancers",
   {
     id: text("id").primaryKey(),
@@ -124,34 +125,34 @@ export const legacyFreelancers = sqliteTable(
     utilization: text("utilization"),
     payout: text("payout"),
     performance: text("performance"),
-    createdAt: ts("created_at"),
-    updatedAt: ts("updated_at"),
+    createdAt: created(),
+    updatedAt: updated(),
   },
   (t) => [index("idx_freelancers_name").on(t.freelancer)]
-);
+).enableRLS();
 
 // ---------------------------------------------------------------------------
-// Phase 0 tables
+// Platform tables
 // ---------------------------------------------------------------------------
 
-export const orgSettings = sqliteTable("org_settings", {
+export const orgSettings = pgTable("org_settings", {
   orgId: text("org_id").primaryKey().default("default"),
   legalName: text("legal_name").notNull().default(""),
   address: text("address").notNull().default(""),
   stateCode: text("state_code").notNull().default(""),
   gstin: text("gstin").notNull().default(""),
   pan: text("pan").notNull().default(""),
-  bankDetails: text("bank_details").notNull().default("{}"),
+  bankDetails: jsonb("bank_details").$type<Record<string, string>>().notNull().default({}),
   defaultTerms: text("default_terms").notNull().default(""),
   logoBlobKey: text("logo_blob_key"),
   signatureBlobKey: text("signature_blob_key"),
   signatoryName: text("signatory_name").notNull().default(""),
   signatoryTitle: text("signatory_title").notNull().default(""),
   fyStartMonth: integer("fy_start_month").notNull().default(4),
-  updatedAt: ts("updated_at"),
-});
+  updatedAt: updated(),
+}).enableRLS();
 
-export const numberSeries = sqliteTable(
+export const numberSeries = pgTable(
   "number_series",
   {
     orgId: text("org_id").notNull().default("default"),
@@ -162,4 +163,4 @@ export const numberSeries = sqliteTable(
     padding: integer("padding").notNull().default(3),
   },
   (t) => [primaryKey({ columns: [t.orgId, t.docType, t.fy] })]
-);
+).enableRLS();

@@ -53,14 +53,14 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 
 ### Non-functional
 - **Users:** 3–15 internal users plus freelancers. Hundreds of companies, low thousands of documents per year. This is a small internal tool; no scale engineering needed.
-- **Cost:** stay on free tiers (Vercel Hobby/Pro, Turso free, no always-on worker).
+- **Cost:** stay on free or low tiers (Vercel, Supabase), no always-on worker. Note that free Supabase projects pause when idle, so prefer a paid tier for daily use.
 - **Security:** nothing readable or writable without login. Role-based access. Salary slips, PAN and bank data visible to ADMIN only.
 - **Correctness of money:** integer paise everywhere. Issued invoices are immutable. Numbering is gap-free per series.
 - **Speed of delivery:** one developer (founder) plus Claude. Each phase ships something usable on its own.
 
 ### Constraints
 - Next.js 16.2 / React 19.2. `AGENTS.md` warns that this Next version has breaking changes, so read `node_modules/next/dist/docs/` before writing routing, proxy/middleware or caching code.
-- Already deployed on Vercel with Turso env vars set.
+- Already deployed on Vercel; the database is Supabase Postgres.
 
 ---
 
@@ -68,7 +68,7 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 
 | Area | Reality |
 |---|---|
-| Data layer | **Two layers, only one used.** `prisma/schema.prisma` (Postgres) defines 14 models but nothing in `src/` imports `@/lib/db`. Runtime uses raw SQL on Turso via `src/lib/turso.ts`, which creates 8 tables with `CREATE TABLE IF NOT EXISTS` on every cold start. There are no migrations. |
+| Data layer | **At audit time (before Phase 0):** two layers, only one used. A Prisma schema was never imported; the runtime used raw SQL on a database with tables created at cold start and no migrations. **Now:** one layer, Drizzle on Supabase Postgres with migrations. |
 | Auth | **None.** Every `/api/*` route accepts anonymous reads and writes on the public Vercel URL. tRPC procedures are all `publicProcedure`. |
 | Pipelines | Generic `pipeline_items` table + config in `src/server/models/pipeline.ts` (allowed transitions per module). Transition is validated, persisted and logged (`src/server/services/pipeline.ts`). This is the best part of the codebase. Keep the idea, move it onto real tables. |
 | Realtime | In-memory pub/sub (`src/server/services/realtime.ts`) + SSE. Does not work across Vercel serverless instances: a change made on one instance is not pushed to clients connected to another. |
@@ -102,9 +102,9 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
                          │     └─ activity (audit), automations         │
                          │  src/server/db/*  Drizzle schema + queries   │
                          └───────────────┬──────────────────────────────┘
-                                         │ libSQL
+                                         │ Postgres (pooler)
                               ┌──────────▼──────────┐     ┌──────────────────┐
-                              │ Turso (SQLite)       │     │ Vercel Blob       │
+                              │ Supabase Postgres    │     │ Vercel Blob       │
                               │ all business data    │     │ uploads, signed   │
                               └──────────────────────┘     │ PDFs, logos       │
                                                            └──────────────────┘
@@ -115,8 +115,8 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 
 | # | Decision | Why | Trade-off / alternative |
 |---|---|---|---|
-| D1 | **One database: Turso (libSQL).** Delete Prisma/Postgres. | It is already the runtime store and already configured on Vercel. Free tier covers this load many times over. | SQLite has fewer types (no native decimal/array/JSON column types). Handled with integer paise and JSON text. Postgres (Neon/Supabase) would be the move only if we needed heavy reporting SQL. |
-| D2 | **Drizzle ORM** for schema, typed queries and migrations (`drizzle-kit`). | The raw-SQL + `CREATE TABLE IF NOT EXISTS` pattern will not survive ~30 tables and schema changes. Drizzle is thin, works with libSQL, and keeps SQL visible. | A new dependency to learn. Prisma has a libSQL adapter too, but its migrations are awkward on Turso and its client is heavier on serverless. |
+| D1 | **One database: Supabase Postgres**, accessed only from the server through Drizzle (transaction-pooler URL at runtime, session URL for migrations). Row level security is on for every table with no policies, so the Supabase REST API exposes nothing. | Real types (timestamptz, jsonb, boolean), real concurrent transactions, managed backups, and one vendor for database and later storage. | Two connection strings to manage. Free projects pause when idle. The REST API and client SDK are deliberately unused. |
+| D2 | **Drizzle ORM** for schema, typed queries and migrations (`drizzle-kit`). | The raw-SQL + `CREATE TABLE IF NOT EXISTS` pattern will not survive ~30 tables and schema changes. Drizzle is thin, works with Postgres, and keeps SQL visible. | A new dependency to learn. Prisma is the alternative, but its client is heavier on serverless. |
 | D3 | **Auth: Better Auth** with Google sign-in, an email allowlist and roles (ADMIN, MANAGER, MEMBER, FREELANCER). | Free, self-hosted, ships a Drizzle adapter and a role plugin. No per-seat cost. | Clerk is faster to wire but costs money past the free tier and holds user data off-site. Auth.js is the other free option. |
 | D4 | **REST route handlers + service layer + TanStack Query.** Remove the unused tRPC scaffold. | This is what the UI already does (`pipeline-board.tsx` uses `fetch` against REST). One pattern is easier for one developer. | tRPC gives end-to-end types. We get most of that by sharing Zod schemas between route and client. |
 | D5 | **Document engine: one system for every generated document.** Issued documents are stored as an immutable JSON snapshot plus template version. PDFs are rendered server-side with `@react-pdf/renderer`. | Invoices, work orders, scopes, offer letters, salary slips, letterheads and agreements share the same needs: template, data, numbering, versions, status, PDF, share link. Build it once. Server-side PDFs can be emailed or WhatsApped later. | The react-pdf layout model is not HTML, so each template is written once in its primitives. `html2pdf` in the browser is quicker but cannot attach to emails and renders differently per browser. |
@@ -310,7 +310,7 @@ Enforced in three layers: `proxy.ts` (must be signed in), a `requireRole()` help
 
 ## 10. Reliability, backups, monitoring
 
-- **Backups:** Turso point-in-time restore on the paid tier; on free, a nightly cron `/api/cron/backup` dumps the DB to Vercel Blob (keep 30 days). Test a restore once.
+- **Backups:** Supabase daily backups (enable point-in-time recovery on a paid plan) plus a periodic `pg_dump` kept outside Supabase. Test a restore once.
 - **Errors:** Vercel logs plus Sentry free tier when we have real users.
 - **Audit:** every mutation writes `activity_log` (existing `logActivity`), including the actor once auth lands.
 - **Idempotency:** issuing documents and recording payments take an idempotency key from the client to avoid double numbers on double-clicks.

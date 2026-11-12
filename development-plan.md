@@ -45,11 +45,11 @@ npm run db:migrate  # drizzle-kit migrate, added in Phase 0
 2. **Remove dead layers:**
    - Delete `prisma/`, `src/lib/db.ts`, the tRPC scaffold (`src/server/trpc.ts`, `src/server/routers/*`, `src/app/api/trpc/`), BullMQ (`src/lib/queue.ts`, `src/workers/`), and the in-memory realtime (`src/server/services/realtime.ts`, `src/app/api/realtime/*`).
    - Remove the `prisma`, `@prisma/client`, `@trpc/*`, `bullmq`, `ioredis`, `@upstash/redis` and `@supabase/supabase-js` packages and their scripts.
-3. **Add Drizzle on Turso:**
-   - Install `drizzle-orm` and `drizzle-kit`. Add `drizzle.config.ts` and `src/server/db/client.ts` (wraps the existing `@libsql/client` setup from `src/lib/turso.ts`).
+3. **Add Drizzle on Postgres (Supabase):**
+   - Install `drizzle-orm`, `drizzle-kit` and `postgres`. Add `drizzle.config.ts` and `src/server/db/client.ts` (postgres-js over the transaction pooler, `prepare: false`).
    - Add `src/server/db/schema/*.ts` with one file per domain.
    - Add scripts `db:generate` and `db:migrate`, plus `db:studio`.
-   - The first migration recreates the current 8 tables with the same columns, so existing data survives. Add a one-off script `scripts/migrate-legacy-turso.ts` that copies rows if column names change.
+   - The baseline migration creates every table with row level security enabled, and seeds the 8 verticals.
 4. **Add auth** with Better Auth, a Google provider and the Drizzle adapter:
    - Files: `src/server/auth.ts`, `src/app/api/auth/[...all]/route.ts`, and `proxy.ts`, which redirects to `/login` when there is no session.
    - Add an `allowed_emails` table or env allowlist, and `users.role`.
@@ -67,11 +67,11 @@ npm run db:migrate  # drizzle-kit migrate, added in Phase 0
 8. **Fix the small bugs:**
    - `src/app/events/page.tsx` is mislabelled ("Social Calendar").
    - The Overview KPIs are hardcoded. Hide the numbers behind a "sample data" badge until Phase 8.
-9. **Env:** update `.env.example` with `TURSO_*`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BLOB_READ_WRITE_TOKEN`, `APP_ENCRYPTION_KEY` and `CRON_SECRET`. Remove the Redis, Postgres, Supabase and OpenAI vars that are no longer used.
+9. **Env:** update `.env.example` with `DATABASE_URL`, `DIRECT_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BLOB_READ_WRITE_TOKEN`, `APP_ENCRYPTION_KEY` and `CRON_SECRET`. Remove the Redis, Postgres, Supabase and OpenAI vars that are no longer used.
 
 **Done when**
 - [ ] Opening the Vercel URL logged out shows `/login`, and `curl -X POST /api/clients` returns 401.
-- [ ] `npm run db:migrate` runs against a fresh Turso DB and against production without data loss.
+- [ ] `npm run db:migrate` runs against a fresh Postgres database and against production without data loss.
 - [ ] Tests cover:
   - `gst.ts`: intra-state, inter-state, no GSTIN, round-off.
   - `money.ts`: words for 0, 1, 99, 1,00,000, 12,34,56,789.50.
@@ -216,7 +216,7 @@ npm run db:migrate  # drizzle-kit migrate, added in Phase 0
 
 **Tasks**
 
-1. **Schema:** `projects`, `milestones`, `tasks`, `freelancers`, `assignments`, `payouts`. Migrate the current `projects`, `tasks` and `freelancers` Turso rows.
+1. **Schema:** `projects`, `milestones`, `tasks`, `freelancers`, `assignments`, `payouts`. Migrate the current `projects`, `tasks` and `freelancers` rows.
 2. **Projects:**
    - `/projects`: board by status, reusing `PipelineBoard` on the `projects` model.
    - `/projects/[id]`: milestones (each one can trigger "Draft invoice for this milestone"), tasks board, team (assignments with allocation %), linked documents and invoices, and budget versus invoiced versus paid.
@@ -291,7 +291,7 @@ npm run db:migrate  # drizzle-kit migrate, added in Phase 0
    - recent activity
 
    Delete `src/lib/module-data.ts`.
-2. **Global search** (⌘K): companies, contacts, deals, invoices by number, projects, docs. A SQLite `LIKE` query is enough at this size.
+2. **Global search** (⌘K): companies, contacts, deals, invoices by number, projects, docs. A Postgres `ILIKE` query is enough at this size.
 3. **In-app notifications:** a `notifications` table plus a bell. Written by services and by the daily cron:
    - follow-up due
    - invoice overdue
@@ -355,7 +355,7 @@ P0 ─► P1 ─► P2 ─► P3 ─► P5 ─► P6 ─► P8 ─► P10
 | Scope creep (every phase grows) | High | Medium | Each phase has a "done when" list; anything extra goes to a backlog section in `handoff.md` |
 | Client or personal data committed to the public repo | Medium | High | No real data in seeds or tests; add `.gitignore` entries for exports; consider making the repo private |
 | Team keeps using Notion out of habit | Medium | Medium | Read-only Notion plus banner at cutover; the dashboard must be faster for the top 5 daily actions |
-| Turso free-tier limits | Low | Low | Usage is far below limits; the backup cron also gives an exit path |
+| Supabase free-tier limits (projects pause when idle, no point-in-time recovery) | Medium | High | Use a paid tier or a keep-alive cron; periodic `pg_dump` off-platform |
 
 ---
 
