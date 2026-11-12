@@ -1,8 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Briefcase,
+  ClipboardList,
   Code2,
   FileText,
+  FileSpreadsheet,
   LayoutDashboard,
   Megaphone,
   Receipt,
@@ -30,6 +32,18 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/crm",
     description: "Companies, contacts, timeline and follow-ups.",
     icon: Users,
+  },
+  {
+    title: "Invoices",
+    href: "/invoices",
+    description: "GST invoices, payments and receivables.",
+    icon: FileSpreadsheet,
+  },
+  {
+    title: "Work Orders",
+    href: "/work-orders",
+    description: "Issue and track customer work orders.",
+    icon: ClipboardList,
   },
   {
     title: "Project Management",
