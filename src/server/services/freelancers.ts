@@ -1,4 +1,8 @@
-import { getTursoClient } from "@/lib/turso";
+import { asc, eq } from "drizzle-orm";
+import { newId } from "@/lib/ids";
+import { getDb, schema, type Db } from "@/server/db/client";
+
+const { legacyFreelancers } = schema;
 
 export type FreelancerRow = {
   id: string;
@@ -14,94 +18,53 @@ export type FreelancerRow = {
 type CreateFreelancerInput = Omit<FreelancerRow, "id">;
 type UpdateFreelancerInput = Partial<CreateFreelancerInput>;
 
-function readString(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
+const columns = {
+  id: legacyFreelancers.id,
+  freelancer: legacyFreelancers.freelancer,
+  skill: legacyFreelancers.skill,
+  availability: legacyFreelancers.availability,
+  project: legacyFreelancers.project,
+  utilization: legacyFreelancers.utilization,
+  payout: legacyFreelancers.payout,
+  performance: legacyFreelancers.performance,
+};
 
-function toFreelancerRow(row: Record<string, unknown>): FreelancerRow | null {
-  const id = readString(row.id);
-  const freelancer = readString(row.freelancer);
+type Selected = { [K in keyof typeof columns]: string | null };
 
-  if (!id || !freelancer) {
+function toRow(row: Selected): FreelancerRow | null {
+  if (!row.id || !row.freelancer) {
     return null;
   }
 
   return {
-    id,
-    freelancer,
-    skill: readString(row.skill),
-    availability: readString(row.availability),
-    project: readString(row.project),
-    utilization: readString(row.utilization),
-    payout: readString(row.payout),
-    performance: readString(row.performance),
+    id: row.id,
+    freelancer: row.freelancer,
+    skill: row.skill ?? "",
+    availability: row.availability ?? "",
+    project: row.project ?? "",
+    utilization: row.utilization ?? "",
+    payout: row.payout ?? "",
+    performance: row.performance ?? "",
   };
 }
 
-export async function listFreelancers() {
-  const client = getTursoClient();
-
-  const result = await client.execute({
-    sql: `
-      SELECT id, freelancer, skill, availability, project, utilization, payout, performance
-      FROM freelancers
-      ORDER BY created_at ASC
-    `,
-  });
-
-  return result.rows
-    .map((row) => toFreelancerRow(row as Record<string, unknown>))
-    .filter((row): row is FreelancerRow => row !== null);
+/** No demo rows are inserted any more; an empty table lists as empty. */
+export async function listFreelancers(db: Db = getDb()) {
+  const rows = await db.select(columns).from(legacyFreelancers).orderBy(asc(legacyFreelancers.createdAt));
+  return rows.map(toRow).filter((row): row is FreelancerRow => row !== null);
 }
 
-export async function createFreelancer(input: CreateFreelancerInput) {
-  const client = getTursoClient();
+export async function createFreelancer(input: CreateFreelancerInput, db: Db = getDb()) {
+  const next: FreelancerRow = { id: `fr-${newId()}`, ...input };
+  const now = new Date().toISOString();
 
-  const next: FreelancerRow = {
-    id: `fr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    freelancer: input.freelancer,
-    skill: input.skill,
-    availability: input.availability,
-    project: input.project,
-    utilization: input.utilization,
-    payout: input.payout,
-    performance: input.performance,
-  };
-
-  await client.execute({
-    sql: `
-      INSERT INTO freelancers (id, freelancer, skill, availability, project, utilization, payout, performance)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    args: [
-      next.id,
-      next.freelancer,
-      next.skill,
-      next.availability,
-      next.project,
-      next.utilization,
-      next.payout,
-      next.performance,
-    ],
-  });
-
+  await db.insert(legacyFreelancers).values({ ...next, createdAt: now, updatedAt: now });
   return next;
 }
 
-export async function updateFreelancer(id: string, input: UpdateFreelancerInput) {
-  const client = getTursoClient();
-
-  const currentResult = await client.execute({
-    sql: `
-      SELECT id, freelancer, skill, availability, project, utilization, payout, performance
-      FROM freelancers
-      WHERE id = ?
-      LIMIT 1
-    `,
-    args: [id],
-  });
-
-  const existing = currentResult.rows[0] as Record<string, unknown> | undefined;
+export async function updateFreelancer(id: string, input: UpdateFreelancerInput, db: Db = getDb()) {
+  const rows = await db.select(columns).from(legacyFreelancers).where(eq(legacyFreelancers.id, id)).limit(1);
+  const existing = rows[0] ? toRow(rows[0]) : null;
 
   if (!existing) {
     return null;
@@ -109,43 +72,28 @@ export async function updateFreelancer(id: string, input: UpdateFreelancerInput)
 
   const next: FreelancerRow = {
     id,
-    freelancer: input.freelancer ?? readString(existing.freelancer),
-    skill: input.skill ?? readString(existing.skill),
-    availability: input.availability ?? readString(existing.availability),
-    project: input.project ?? readString(existing.project),
-    utilization: input.utilization ?? readString(existing.utilization),
-    payout: input.payout ?? readString(existing.payout),
-    performance: input.performance ?? readString(existing.performance),
+    freelancer: input.freelancer ?? existing.freelancer,
+    skill: input.skill ?? existing.skill,
+    availability: input.availability ?? existing.availability,
+    project: input.project ?? existing.project,
+    utilization: input.utilization ?? existing.utilization,
+    payout: input.payout ?? existing.payout,
+    performance: input.performance ?? existing.performance,
   };
 
-  await client.execute({
-    sql: `
-      UPDATE freelancers
-      SET freelancer = ?, skill = ?, availability = ?, project = ?, utilization = ?, payout = ?, performance = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `,
-    args: [
-      next.freelancer,
-      next.skill,
-      next.availability,
-      next.project,
-      next.utilization,
-      next.payout,
-      next.performance,
-      id,
-    ],
-  });
+  await db
+    .update(legacyFreelancers)
+    .set({ ...next, updatedAt: new Date().toISOString() })
+    .where(eq(legacyFreelancers.id, id));
 
   return next;
 }
 
-export async function deleteFreelancer(id: string) {
-  const client = getTursoClient();
+export async function deleteFreelancer(id: string, db: Db = getDb()) {
+  const deleted = await db
+    .delete(legacyFreelancers)
+    .where(eq(legacyFreelancers.id, id))
+    .returning({ id: legacyFreelancers.id });
 
-  const result = await client.execute({
-    sql: "DELETE FROM freelancers WHERE id = ?",
-    args: [id],
-  });
-
-  return Number(result.rowsAffected ?? 0) > 0;
+  return deleted.length > 0;
 }

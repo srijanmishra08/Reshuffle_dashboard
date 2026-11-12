@@ -58,11 +58,13 @@ Each step ends with `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run bui
 - [ ] Note the project **region** and set the Vercel function region to match, otherwise each query pays a cross-region round trip.
 - [ ] Confirm the Supabase MCP connector is authorised for this project if you want me to inspect tables, run advisors or apply migrations from here. It returned a permission error in this session.
 
-### Step 1: port legacy raw SQL to Drizzle (SQLite, no behaviour change)
+### Step 1: port legacy raw SQL to Drizzle (SQLite, no behaviour change): DONE 2026-11-12
 - Rewrite `pipeline-items.ts`, `freelancers.ts`, `tasks`, `projects` and `social/entries` routes to use `getDb()` and the existing schema tables.
 - Remove `src/lib/turso.ts` usage from services (`getTursoClient` only remains inside `db/client.ts`).
 - Fix review findings that live in these files: demo-seed on read path in `pipeline-items.ts` (seed once, never on GET), explicit ISO timestamps on every write.
 - Add tests for the ported services using the existing temp-SQLite helper.
+
+**Done.** Services: `pipeline-items`, `freelancers`, `tasks`, `projects`, `social` (routes are thin). `getTursoClient` is now used only inside `src/server/db/client.ts`. Migration `0002_normalise_legacy_timestamps.sql` converts old `YYYY-MM-DD HH:MM:SS` values to ISO so the Postgres copy only sees one format. Deliberate behaviour changes: demo cards and demo freelancers are no longer seeded on read; a board transition without a title no longer renames the card; the audit log now records the actor for these routes; unexpected database errors are no longer echoed to clients. 46 tests pass; verified end to end against a running server.
 
 ### Step 2: Postgres schema and migrations
 - Add `drizzle-orm/pg-core` versions of `auth.ts`, `core.ts`, `crm.ts` under `src/server/db/schema/` (swap imports; apply the type mapping above).

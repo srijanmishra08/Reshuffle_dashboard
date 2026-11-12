@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState, type DragEvent, type FormEvent } from "react";
-import type { PipelineModule, PipelineSeedItem } from "@/lib/pipeline-seeds";
+import type { PipelineItem } from "@/lib/pipeline-types";
+import type { PipelineModule } from "@/server/models/pipeline";
 
 type PipelineDefinition = {
   module: PipelineModule;
@@ -21,7 +22,7 @@ type PipelineBoardProps = {
 
 export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
   const supportsClientContact = module === "crm" || module === "outreach";
-  const [items, setItems] = useState<PipelineSeedItem[]>([]);
+  const [items, setItems] = useState<PipelineItem[]>([]);
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
   const [message, setMessage] = useState<string>("Loading pipeline...");
   const [newTitle, setNewTitle] = useState("");
@@ -44,7 +45,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     });
 
     const json = (await response.json()) as {
-      data?: PipelineSeedItem[];
+      data?: PipelineItem[];
       error?: string;
     };
 
@@ -76,7 +77,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
 
         if (itemsResponse.ok) {
           const itemsJson = (await itemsResponse.json()) as {
-            data?: PipelineSeedItem[];
+            data?: PipelineItem[];
           };
 
           if (itemsJson.data) {
@@ -204,7 +205,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
         }),
       });
 
-      const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
+      const json = (await response.json()) as { error?: string; data?: PipelineItem };
 
       if (!response.ok || !json.data) {
         setMessage(json.error ?? "Could not create card.");
@@ -224,7 +225,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     setNewAssignee("");
   }
 
-  function startEdit(item: PipelineSeedItem) {
+  function startEdit(item: PipelineItem) {
     setEditingId(item.id);
     setEditTitle(item.title);
     setEditSubtitle(item.subtitle ?? "");
@@ -257,7 +258,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
         }),
       });
 
-      const json = (await response.json()) as { error?: string; data?: PipelineSeedItem };
+      const json = (await response.json()) as { error?: string; data?: PipelineItem };
 
       if (!response.ok || !json.data) {
         setMessage(json.error ?? "Could not update card.");

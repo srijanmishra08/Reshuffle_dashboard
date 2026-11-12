@@ -1,6 +1,10 @@
-import { getTursoClient } from "@/lib/turso";
-import { pipelineSeedItems, type PipelineSeedItem } from "@/lib/pipeline-seeds";
+import { and, asc, eq } from "drizzle-orm";
+import { newId } from "@/lib/ids";
+import type { PipelineItem } from "@/lib/pipeline-types";
+import { getDb, schema, type Db } from "@/server/db/client";
 import type { PipelineModule } from "@/server/models/pipeline";
+
+const { pipelineItems } = schema;
 
 type PersistTransitionInput = {
   module: PipelineModule;
@@ -35,285 +39,197 @@ type UpdatePipelineItemInput = {
 };
 
 function generateEntityId(module: PipelineModule) {
-  return `${module}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${module}-${newId()}`;
 }
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-function readItemMetadata(metadata: unknown) {
-  if (!metadata || typeof metadata !== "object") {
-    return {
-      assignee: undefined,
-      phone: undefined,
-      email: undefined,
-    };
+function parseMetadata(raw: string | null): Record<string, unknown> {
+  if (!raw) {
+    return {};
   }
 
-  const payload = metadata as Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
 
+function readItemMetadata(metadata: Record<string, unknown> | undefined) {
   return {
-    assignee: readString(payload.assignee),
-    phone: readString(payload.phone),
-    email: readString(payload.email),
+    assignee: readString(metadata?.assignee),
+    phone: readString(metadata?.phone),
+    email: readString(metadata?.email),
   };
 }
 
-function toPipelineItem(row: Record<string, unknown>): PipelineSeedItem | null {
-  const metadataRaw = row.metadata;
-  let metadata: Record<string, unknown> | undefined;
+function serialiseMetadata(metadata: Record<string, unknown>): string | null {
+  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
+}
 
-  if (typeof metadataRaw === "string" && metadataRaw.length > 0) {
-    try {
-      metadata = JSON.parse(metadataRaw) as Record<string, unknown>;
-    } catch {
-      metadata = undefined;
+/** Boards start empty. Demo cards are no longer seeded on read. */
+export async function listPipelineItems(module: PipelineModule, db: Db = getDb()): Promise<PipelineItem[]> {
+  const rows = await db
+    .select({
+      entityId: pipelineItems.entityId,
+      title: pipelineItems.title,
+      subtitle: pipelineItems.subtitle,
+      stage: pipelineItems.stage,
+      metadata: pipelineItems.metadata,
+    })
+    .from(pipelineItems)
+    .where(eq(pipelineItems.module, module))
+    .orderBy(asc(pipelineItems.createdAt));
+
+  return rows.flatMap((row) => {
+    if (!row.entityId || !row.title || !row.stage) {
+      return [];
     }
-  }
 
-  const contact = readItemMetadata(metadata);
-
-  const id = readString(row.entity_id);
-  const title = readString(row.title);
-  const stage = readString(row.stage);
-
-  if (!id || !title || !stage) {
-    return null;
-  }
-
-  return {
-    id,
-    title,
-    subtitle: readString(row.subtitle),
-    stage,
-    assignee: contact.assignee,
-    phone: contact.phone,
-    email: contact.email,
-  };
-}
-
-async function listPipelineItemsFromTurso(module: PipelineModule): Promise<PipelineSeedItem[]> {
-  const client = getTursoClient();
-
-  const countResult = await client.execute({
-    sql: "SELECT COUNT(*) AS count FROM pipeline_items WHERE module = ?",
-    args: [module],
-  });
-
-  const countRow = countResult.rows[0] as Record<string, unknown> | undefined;
-  const count = Number(countRow?.count ?? 0);
-
-  if (count === 0) {
-    const seeds = pipelineSeedItems[module];
-
-    for (const item of seeds) {
-      const metadata: Record<string, unknown> = {};
-
-      if (item.assignee) metadata.assignee = item.assignee;
-      if (item.phone) metadata.phone = item.phone;
-      if (item.email) metadata.email = item.email;
-
-      await client.execute({
-        sql: `
-          INSERT INTO pipeline_items (id, module, entity_type, entity_id, title, subtitle, stage, metadata)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        args: [
-          crypto.randomUUID(),
-          module,
-          "pipeline_entity",
-          item.id,
-          item.title,
-          item.subtitle ?? null,
-          item.stage,
-          Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
-        ],
-      });
-    }
-  }
-
-  const result = await client.execute({
-    sql: `
-      SELECT entity_id, title, subtitle, stage, metadata
-      FROM pipeline_items
-      WHERE module = ?
-      ORDER BY created_at ASC
-    `,
-    args: [module],
-  });
-
-  return result.rows
-    .map((row) => toPipelineItem(row as Record<string, unknown>))
-    .filter((row): row is PipelineSeedItem => row !== null);
-}
-
-export async function listPipelineItems(module: PipelineModule) {
-  return await listPipelineItemsFromTurso(module);
-}
-
-export async function persistPipelineTransition(input: PersistTransitionInput) {
-  const client = getTursoClient();
-
-  await client.execute({
-    sql: `
-      INSERT INTO pipeline_items (id, module, entity_type, entity_id, title, subtitle, stage, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(module, entity_id)
-      DO UPDATE SET
-        stage = excluded.stage,
-        title = COALESCE(excluded.title, pipeline_items.title),
-        subtitle = COALESCE(excluded.subtitle, pipeline_items.subtitle),
-        metadata = COALESCE(excluded.metadata, pipeline_items.metadata),
-        updated_at = CURRENT_TIMESTAMP
-    `,
-    args: [
-      crypto.randomUUID(),
-      input.module,
-      input.entityType,
-      input.entityId,
-      input.title ?? input.entityId,
-      input.subtitle ?? null,
-      input.to,
-      input.metadata ? JSON.stringify(input.metadata) : null,
-    ],
+    const contact = readItemMetadata(parseMetadata(row.metadata));
+    return [
+      {
+        id: row.entityId,
+        title: row.title,
+        subtitle: readString(row.subtitle),
+        stage: row.stage,
+        ...contact,
+      },
+    ];
   });
 }
 
-export async function createPipelineItem(module: PipelineModule, input: CreatePipelineItemInput) {
+export async function persistPipelineTransition(input: PersistTransitionInput, db: Db = getDb()) {
+  const now = new Date().toISOString();
+  const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+
+  await db
+    .insert(pipelineItems)
+    .values({
+      id: newId(),
+      module: input.module,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      title: input.title ?? input.entityId,
+      subtitle: input.subtitle ?? null,
+      stage: input.to,
+      metadata,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [pipelineItems.module, pipelineItems.entityId],
+      // Only overwrite title, subtitle and metadata when the caller supplied them.
+      set: {
+        stage: input.to,
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.subtitle !== undefined ? { subtitle: input.subtitle } : {}),
+        ...(metadata !== null ? { metadata } : {}),
+        updatedAt: now,
+      },
+    });
+}
+
+export async function createPipelineItem(
+  module: PipelineModule,
+  input: CreatePipelineItemInput,
+  db: Db = getDb()
+) {
   const entityId = input.entityId ?? generateEntityId(module);
-  const metadataContact = readItemMetadata(input.metadata);
-  const nextAssignee = input.assignee ?? metadataContact.assignee;
-  const nextPhone = input.phone ?? metadataContact.phone;
-  const nextEmail = input.email ?? metadataContact.email;
-  const nextMetadata: Record<string, unknown> = {
-    ...(input.metadata ?? {}),
-  };
+  const fromMetadata = readItemMetadata(input.metadata);
+  const assignee = input.assignee ?? fromMetadata.assignee;
+  const phone = input.phone ?? fromMetadata.phone;
+  const email = input.email ?? fromMetadata.email;
+  const metadata: Record<string, unknown> = { ...(input.metadata ?? {}) };
 
-  if (nextAssignee) nextMetadata.assignee = nextAssignee;
-  if (nextPhone) nextMetadata.phone = nextPhone;
-  if (nextEmail) nextMetadata.email = nextEmail;
+  if (assignee) metadata.assignee = assignee;
+  if (phone) metadata.phone = phone;
+  if (email) metadata.email = email;
 
-  const client = getTursoClient();
+  const now = new Date().toISOString();
 
-  await client.execute({
-    sql: `
-      INSERT INTO pipeline_items (id, module, entity_type, entity_id, title, subtitle, stage, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(module, entity_id)
-      DO UPDATE SET
-        title = excluded.title,
-        subtitle = excluded.subtitle,
-        stage = excluded.stage,
-        metadata = excluded.metadata,
-        updated_at = CURRENT_TIMESTAMP
-    `,
-    args: [
-      crypto.randomUUID(),
+  await db
+    .insert(pipelineItems)
+    .values({
+      id: newId(),
       module,
-      input.entityType,
+      entityType: input.entityType,
       entityId,
-      input.title,
-      input.subtitle ?? null,
-      input.stage,
-      Object.keys(nextMetadata).length > 0 ? JSON.stringify(nextMetadata) : null,
-    ],
-  });
+      title: input.title,
+      subtitle: input.subtitle ?? null,
+      stage: input.stage,
+      metadata: serialiseMetadata(metadata),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [pipelineItems.module, pipelineItems.entityId],
+      set: {
+        title: input.title,
+        subtitle: input.subtitle ?? null,
+        stage: input.stage,
+        metadata: serialiseMetadata(metadata),
+        updatedAt: now,
+      },
+    });
 
-  return {
-    id: entityId,
-    title: input.title,
-    subtitle: input.subtitle,
-    stage: input.stage,
-    assignee: nextAssignee,
-    phone: nextPhone,
-    email: nextEmail,
-  };
+  return { id: entityId, title: input.title, subtitle: input.subtitle, stage: input.stage, assignee, phone, email };
 }
 
 export async function updatePipelineItem(
   module: PipelineModule,
   entityId: string,
-  input: UpdatePipelineItemInput
+  input: UpdatePipelineItemInput,
+  db: Db = getDb()
 ) {
-  const client = getTursoClient();
-
-  const currentResult = await client.execute({
-    sql: `
-      SELECT title, subtitle, stage, metadata
-      FROM pipeline_items
-      WHERE module = ? AND entity_id = ?
-      LIMIT 1
-    `,
-    args: [module, entityId],
-  });
-
-  const existing = currentResult.rows[0] as Record<string, unknown> | undefined;
+  const rows = await db
+    .select()
+    .from(pipelineItems)
+    .where(and(eq(pipelineItems.module, module), eq(pipelineItems.entityId, entityId)))
+    .limit(1);
+  const existing = rows[0];
 
   if (!existing) {
     return null;
   }
 
-  const existingMetadataRaw = readString(existing.metadata);
-  let existingMetadata: Record<string, unknown> = {};
+  const title = input.title ?? readString(existing.title) ?? entityId;
+  const subtitle = input.subtitle ?? readString(existing.subtitle);
+  const stage = input.stage ?? readString(existing.stage) ?? "BACKLOG";
 
-  if (existingMetadataRaw) {
-    try {
-      existingMetadata = JSON.parse(existingMetadataRaw) as Record<string, unknown>;
-    } catch {
-      existingMetadata = {};
-    }
-  }
-
-  const nextTitle = input.title ?? readString(existing.title) ?? entityId;
-  const nextSubtitle = input.subtitle ?? readString(existing.subtitle);
-  const nextStage = input.stage ?? readString(existing.stage) ?? "BACKLOG";
-
-  const mergedMetadata: Record<string, unknown> = {
-    ...existingMetadata,
+  const metadata: Record<string, unknown> = {
+    ...parseMetadata(existing.metadata),
     ...(input.metadata ?? {}),
   };
 
-  if (input.assignee !== undefined) mergedMetadata.assignee = input.assignee;
-  if (input.phone !== undefined) mergedMetadata.phone = input.phone;
-  if (input.email !== undefined) mergedMetadata.email = input.email;
+  if (input.assignee !== undefined) metadata.assignee = input.assignee;
+  if (input.phone !== undefined) metadata.phone = input.phone;
+  if (input.email !== undefined) metadata.email = input.email;
 
-  await client.execute({
-    sql: `
-      UPDATE pipeline_items
-      SET title = ?, subtitle = ?, stage = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE module = ? AND entity_id = ?
-    `,
-    args: [
-      nextTitle,
-      nextSubtitle ?? null,
-      nextStage,
-      Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
-      module,
-      entityId,
-    ],
-  });
+  await db
+    .update(pipelineItems)
+    .set({
+      title,
+      subtitle: subtitle ?? null,
+      stage,
+      metadata: serialiseMetadata(metadata),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(and(eq(pipelineItems.module, module), eq(pipelineItems.entityId, entityId)));
 
-  const contact = readItemMetadata(mergedMetadata);
-
-  return {
-    id: entityId,
-    title: nextTitle,
-    subtitle: nextSubtitle,
-    stage: nextStage,
-    assignee: contact.assignee,
-    phone: contact.phone,
-    email: contact.email,
-  };
+  return { id: entityId, title, subtitle, stage, ...readItemMetadata(metadata) };
 }
 
-export async function deletePipelineItem(module: PipelineModule, entityId: string) {
-  const client = getTursoClient();
+export async function deletePipelineItem(module: PipelineModule, entityId: string, db: Db = getDb()) {
+  const deleted = await db
+    .delete(pipelineItems)
+    .where(and(eq(pipelineItems.module, module), eq(pipelineItems.entityId, entityId)))
+    .returning({ id: pipelineItems.id });
 
-  const result = await client.execute({
-    sql: "DELETE FROM pipeline_items WHERE module = ? AND entity_id = ?",
-    args: [module, entityId],
-  });
-
-  return Number(result.rowsAffected ?? 0) > 0;
+  return deleted.length > 0;
 }
+

@@ -32,7 +32,7 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 | UI shell, nav | Works | `src/components/dashboard-shell.tsx`, `src/lib/navigation.ts` |
 | Generic kanban boards | Works | `PipelineBoard` now polls every 20 s instead of SSE. Still backed by `pipeline_items` for social, projects, outreach, app-dev, events, etc. |
 | Pipeline transitions + activity log | Works | `src/server/services/pipeline.ts`, `activity.ts` (activity now uses Drizzle) |
-| Social, freelancers, projects, tasks APIs | Work, legacy | Still raw SQL via `getTursoClient()`. Replaced in Phases 5 and 7. Freelancer fake seed rows are gone. |
+| Social, freelancers, projects, tasks, pipeline items | Work, legacy tables | Now Drizzle-backed services (`src/server/services/{social,freelancers,projects,tasks,pipeline-items}.ts`). Demo cards and demo freelancers are no longer seeded. Replaced by real domain tables in Phases 5 and 7. |
 | Overview KPIs + feed | **Fake** | Marked "Sample data". Real KPIs in Phase 8. |
 | Finance page | **Not persisted** | Phase 6 |
 | Events page | Fixed | Now shows the `events` pipeline board |
@@ -88,8 +88,9 @@ npm run dev               # http://localhost:3000
 9. **Next 16 facts verified from the bundled docs:** the file is `src/proxy.ts` exporting `proxy` (not `middleware`); route handler `params` is a `Promise`; the proxy only does an optimistic cookie check, so real authorisation lives in the route handlers (`requireRole`). Public paths are listed at the top of `src/proxy.ts` (add `/p/` pages there in Phase 3; `/api/cron` and `/p/` are already allowed through).
 10. **React compiler lint** forbids calling a state-setting function synchronously inside `useEffect`. Wrap the call in `setTimeout(..., 0)` (see `company-detail.tsx`).
 11. **Concurrency tests on SQLite files:** the embedded libsql client throws `SQLITE_BUSY` for parallel interactive transactions, so `numbering.test.ts` tests parallel callers on the single atomic `UPDATE ... RETURNING` plus a rollback test. Real Turso is not affected the same way, but still allocate numbers inside the issuing transaction.
-12. **Legacy leftovers:** the `clients` table and the `crm`/`outreach` entries in `pipelineModels` still exist. Delete them after the Notion import is verified and deals land (Phase 3).
-13. **Disk:** this repo lives in iCloud Drive. `node_modules` and `.next` sync slowly and can fill the disk. Prefer a non-iCloud folder for development.
+12. **Run `npm run db:migrate` again for the new `0002` migration** (normalises legacy timestamps to ISO; safe to re-run). Boards that were never opened in production now start empty because demo seeding on read was removed.
+13. **Legacy leftovers:** the `clients` table and the `crm`/`outreach` entries in `pipelineModels` still exist. Delete them after the Notion import is verified and deals land (Phase 3).
+14. **Disk:** this repo lives in iCloud Drive. `node_modules` and `.next` sync slowly and can fill the disk. Prefer a non-iCloud folder for development.
 
 ---
 
@@ -173,6 +174,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | Date | Who | What |
 |---|---|---|
 | 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. No code changed. |
+| 2026-11-12 | Claude with Srijan | Supabase migration Step 1 done (see `docs/SUPABASE_MIGRATION_PLAN.md`): all raw SQL ported to Drizzle services, timestamps normalised (migration 0002), demo seeding removed, 46 tests. Committed locally on `main`, not pushed. Next: Step 2 (Postgres schema), which needs the pooler connection string from Srijan. |
 | 2026-11-12 | Claude with Srijan | Merged Phase 0 and 1 straight to `main` (`cf8651a`, as asked, no PR) and wrote `docs/SUPABASE_MIGRATION_PLAN.md`. Pushing to `main` may auto-deploy to Vercel: production needs the new env vars and `npm run db:migrate` or the deployed app will not work. Five Sonnet reviewers' findings (security, database, TypeScript, plan audit) are not yet fixed; main ones: allowlist removal does not revoke existing users, polling overwrites unsaved edits, demo-seed on board read path, timestamp format mixing, missing route-level tests. |
 | 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients/products/meetings). 37 tests pass; lint, tsc and build clean; API verified end to end with a signed test session. **Not done:** logo/signature uploads, AES crypto helper (Phase 4), dropping legacy `clients` table, real Notion import run, browser click-through (Google-only login), deploy. `PipelineBoard` was not reused for the lifecycle board; `lifecycle-board.tsx` is a small dedicated board because companies are real rows, not `pipeline_items`. |
 

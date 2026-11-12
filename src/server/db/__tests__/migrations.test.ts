@@ -26,7 +26,7 @@ describe("baseline migration on a database that already has legacy tables", () =
       await client.execute(
         "CREATE INDEX idx_activity_module_created ON activity_logs (module, created_at DESC)"
       );
-      await client.execute("INSERT INTO clients (id, name) VALUES ('c1', 'Fake Co')");
+      await client.execute("INSERT INTO clients (id, name, created_at, updated_at) VALUES ('c1', 'Fake Co', '2026-05-01 10:30:00', '2026-05-01 10:30:00')");
       await client.execute(
         "INSERT INTO activity_logs (id, action, module, entity_type, entity_id) VALUES ('a1','x','crm','client','c1')"
       );
@@ -40,6 +40,10 @@ describe("baseline migration on a database that already has legacy tables", () =
       const verticals = await client.execute("SELECT count(*) AS n FROM verticals");
 
       expect(clients.rows).toHaveLength(1);
+
+      // Legacy "YYYY-MM-DD HH:MM:SS" timestamps are normalised to ISO 8601 (UTC).
+      const stamped = await client.execute("SELECT created_at FROM clients WHERE id = 'c1'");
+      expect(stamped.rows[0].created_at).toBe("2026-05-01T10:30:00.000Z");
       expect(logs.rows).toHaveLength(1);
       expect(Number(companies.rows[0].n)).toBe(0);
       expect(Number(verticals.rows[0].n)).toBe(8);
