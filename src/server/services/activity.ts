@@ -1,4 +1,6 @@
-import { getTursoClient } from "@/lib/turso";
+import { desc } from "drizzle-orm";
+import { newId } from "@/lib/ids";
+import { getDb, schema, type Db } from "@/server/db/client";
 
 type LogActivityInput = {
   actorId?: string;
@@ -9,25 +11,21 @@ type LogActivityInput = {
   metadata?: Record<string, unknown>;
 };
 
-export async function logActivity(input: LogActivityInput) {
-  try {
-    const client = getTursoClient();
-    const id = crypto.randomUUID();
+/** Audit trail. A logging failure never breaks the request. */
+export async function logActivity(input: LogActivityInput, db?: Db) {
+  const id = newId();
+  const createdAt = new Date().toISOString();
 
-    await client.execute({
-      sql: `
-        INSERT INTO activity_logs (id, actor_id, action, module, entity_type, entity_id, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-      args: [
-        id,
-        input.actorId ?? null,
-        input.action,
-        input.module,
-        input.entityType,
-        input.entityId,
-        input.metadata ? JSON.stringify(input.metadata) : null,
-      ],
+  try {
+    await (db ?? getDb()).insert(schema.activityLogs).values({
+      id,
+      actorId: input.actorId ?? null,
+      action: input.action,
+      module: input.module,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      createdAt,
     });
 
     return {
@@ -38,7 +36,7 @@ export async function logActivity(input: LogActivityInput) {
       entityType: input.entityType,
       entityId: input.entityId,
       metadata: input.metadata ?? null,
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
   } catch (error) {
     console.warn("Activity logging skipped", {
@@ -53,42 +51,34 @@ export async function logActivity(input: LogActivityInput) {
   }
 }
 
-export async function getRecentActivity(limit = 20) {
+export async function getRecentActivity(limit = 20, db?: Db) {
   try {
-    const client = getTursoClient();
+    const rows = await (db ?? getDb())
+      .select()
+      .from(schema.activityLogs)
+      .orderBy(desc(schema.activityLogs.createdAt))
+      .limit(limit);
 
-    const result = await client.execute({
-      sql: `
-        SELECT id, actor_id, action, module, entity_type, entity_id, metadata, created_at
-        FROM activity_logs
-        ORDER BY created_at DESC
-        LIMIT ?
-      `,
-      args: [limit],
-    });
-
-    return result.rows.map((row) => {
-      const payload = row as Record<string, unknown>;
-      const rawMetadata = payload.metadata;
+    return rows.map((row) => {
       let metadata: Record<string, unknown> | null = null;
 
-      if (typeof rawMetadata === "string" && rawMetadata.length > 0) {
+      if (row.metadata) {
         try {
-          metadata = JSON.parse(rawMetadata) as Record<string, unknown>;
+          metadata = JSON.parse(row.metadata) as Record<string, unknown>;
         } catch {
           metadata = null;
         }
       }
 
       return {
-        id: String(payload.id ?? ""),
-        actorId: payload.actor_id ? String(payload.actor_id) : null,
-        action: String(payload.action ?? ""),
-        module: String(payload.module ?? ""),
-        entityType: String(payload.entity_type ?? ""),
-        entityId: String(payload.entity_id ?? ""),
+        id: row.id,
+        actorId: row.actorId,
+        action: row.action,
+        module: row.module,
+        entityType: row.entityType,
+        entityId: row.entityId,
         metadata,
-        createdAt: String(payload.created_at ?? new Date().toISOString()),
+        createdAt: row.createdAt,
       };
     });
   } catch {

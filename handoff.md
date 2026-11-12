@@ -2,7 +2,7 @@
 
 This is for whoever picks up the build next, whether a developer, Srijan, or a coding agent. Read it first, then `plan.md` (what we are building and why) and `development-plan.md` (the order to build it in).
 
-**As of:** 2026-11-12, commit `323cab5` on `main`.
+**As of:** 2026-11-12. Branch `phase-0-1-foundations-crm` (Phase 0 and Phase 1 built, not yet merged or deployed). Last commit on `main`: `72cc7c6`.
 
 **Owner:** Srijan (founder, Reshuffle OPC, Raipur).
 
@@ -23,21 +23,21 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 
 | Piece | State | Notes |
 |---|---|---|
+| Auth | **Done (Phase 0)** | Better Auth, Google sign-in, allowlist, roles. `src/server/auth.ts`, `src/server/authz.ts`, `src/proxy.ts`. Every `/api/*` route calls `requireStaff()` or `requireRole()`. |
+| Database layer | **Done (Phase 0)** | Drizzle on Turso. Schema in `src/server/db/schema/*`, migrations in `drizzle/`. `src/lib/turso.ts` no longer creates tables. |
+| Money, GST, numbering | **Done, tested** | `src/server/lib/money.ts`, `src/server/services/gst.ts`, `src/server/services/numbering.ts`. Not yet used by any UI (invoices are Phase 2). |
+| Settings (org, GSTIN, bank, signatory) | **Done, no uploads** | `/settings`, ADMIN only. Logo and signature uploads wait for Phase 2 (Vercel Blob). |
+| CRM (Phase 1) | **Built** | Companies, contacts, interactions, meetings, follow-ups, verticals. `/crm` (table + lifecycle board), `/crm/[id]`. APIs under `/api/companies`, `/api/followups`, `/api/verticals`. |
+| Notion import (clients, products, meetings) | **Built, untested on real export** | `scripts/import-notion.ts`, logic in `src/server/import/notion.ts`. Column names are guessed from the handoff, so run `--dry-run` on the real export and adjust the alias lists. |
 | UI shell, nav | Works | `src/components/dashboard-shell.tsx`, `src/lib/navigation.ts` |
-| Generic kanban boards | Works | `src/components/pipeline-board.tsx`, driven by `src/server/models/pipeline.ts`; data in Turso `pipeline_items` |
-| Pipeline transitions + activity log | Works | `src/server/services/pipeline.ts`, `src/server/services/activity.ts` |
-| Social content entries | Works (CRUD) | `src/app/social/page.tsx`, `/api/social/entries` |
-| Freelancers table | Works (CRUD) | `src/app/freelancers/page.tsx`, `src/server/services/freelancers.ts`; seeds 3 fake rows when the table is empty |
-| Clients/projects/tasks APIs | Basic | Turso raw SQL; no detail pages |
-| Overview KPIs + feed | **Fake** | Hardcoded in `src/lib/module-data.ts` |
-| Finance page | **Not persisted** | React state only; lost on reload |
-| Events page | **Wrong** | Shows the social board under the title "Social Calendar" |
-| Auth | **Missing** | All APIs are open on the public URL. Fix first. |
-| Prisma schema | **Unused** | `prisma/schema.prisma` is never imported. Runtime is Turso. Planned for deletion. |
-| tRPC | **Unused scaffold** | One router, public procedures. Planned for deletion. |
-| BullMQ worker | **Non-functional** | Only logs; cannot run on Vercel. Planned for deletion. |
-| Realtime (SSE) | **Broken on Vercel** | In-memory bus, so events don't cross serverless instances. Replace with polling. |
-| Tests / CI | None | Set up in Phase 0 |
+| Generic kanban boards | Works | `PipelineBoard` now polls every 20 s instead of SSE. Still backed by `pipeline_items` for social, projects, outreach, app-dev, events, etc. |
+| Pipeline transitions + activity log | Works | `src/server/services/pipeline.ts`, `activity.ts` (activity now uses Drizzle) |
+| Social, freelancers, projects, tasks APIs | Work, legacy | Still raw SQL via `getTursoClient()`. Replaced in Phases 5 and 7. Freelancer fake seed rows are gone. |
+| Overview KPIs + feed | **Fake** | Marked "Sample data". Real KPIs in Phase 8. |
+| Finance page | **Not persisted** | Phase 6 |
+| Events page | Fixed | Now shows the `events` pipeline board |
+| Removed | Gone | Prisma, tRPC, BullMQ worker, in-memory SSE realtime, automation trigger route, `/api/clients` |
+| Tests / CI | **Done** | Vitest (`npm test`), 37 tests. `.github/workflows/ci.yml` runs lint, tsc, test, build. |
 
 ### Sibling repo: `reshuffle-invoice`
 - Static HTML: `invoice-generator.html`, `work-order.html`, `offer-letter.html`, `salary-slip.html`, `letterhead.html`.
@@ -53,13 +53,17 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 
 ```bash
 npm install
-cp .env.example .env      # fill TURSO_DATABASE_URL and TURSO_AUTH_TOKEN (ask Srijan; never commit)
+cp .env.example .env      # defaults to a local SQLite file; Google keys needed to sign in
+npm run db:migrate        # creates/updates the schema (also seeds the 8 verticals)
 npm run dev               # http://localhost:3000
 ```
 
-- Production deploys go to Vercel from `main`. The Turso env vars are already set there.
-- Use a **separate Turso database for local development** (`turso db create reshuffle-dev`). Never point local dev at the production DB.
-- After Phase 0 the commands become `npm run db:migrate`, `npm test`, `npm run lint` and `npx tsc --noEmit`.
+- Sign-in is Google only. In the Google Cloud console add the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google`. Put your email in `BOOTSTRAP_ADMIN_EMAILS` to become ADMIN on first sign-in; add others as rows in `allowed_emails` (email, role).
+- **Production:** run `npm run db:migrate` against the production Turso DB before deploying this branch. The baseline migration uses `IF NOT EXISTS`, so existing tables and rows are untouched. Set the new env vars on Vercel (see `.env.example`).
+- Use a **separate Turso database for local development**. Never point local dev at production.
+- Checks: `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
+- Schema change flow: edit `src/server/db/schema/*`, run `npm run db:generate`, review the SQL, commit it.
+- Notion import: `npx tsx scripts/import-notion.ts <export-dir outside repo> --dry-run`, then without `--dry-run`.
 
 ---
 
@@ -81,7 +85,11 @@ npm run dev               # http://localhost:3000
 6. **react-pdf and ₹.** The default PDF fonts have no ₹ glyph. Register Noto Sans or Inter.
 7. **Vercel has no long-running processes.** Use Vercel Cron → `/api/cron/*` (protected by `CRON_SECRET`), not workers.
 8. **Notion API limits.** The workspace's query allowance ran out after about 15 queries on 2026-11-12. Migrate from a **CSV export**, not the API.
-9. **Freelancer seed rows.** `listFreelancers()` inserts three fake freelancers if the table is empty. Remove that behaviour when the real table lands.
+9. **Next 16 facts verified from the bundled docs:** the file is `src/proxy.ts` exporting `proxy` (not `middleware`); route handler `params` is a `Promise`; the proxy only does an optimistic cookie check, so real authorisation lives in the route handlers (`requireRole`). Public paths are listed at the top of `src/proxy.ts` (add `/p/` pages there in Phase 3; `/api/cron` and `/p/` are already allowed through).
+10. **React compiler lint** forbids calling a state-setting function synchronously inside `useEffect`. Wrap the call in `setTimeout(..., 0)` (see `company-detail.tsx`).
+11. **Concurrency tests on SQLite files:** the embedded libsql client throws `SQLITE_BUSY` for parallel interactive transactions, so `numbering.test.ts` tests parallel callers on the single atomic `UPDATE ... RETURNING` plus a rollback test. Real Turso is not affected the same way, but still allocate numbers inside the issuing transaction.
+12. **Legacy leftovers:** the `clients` table and the `crm`/`outreach` entries in `pipelineModels` still exist. Delete them after the Notion import is verified and deals land (Phase 3).
+13. **Disk:** this repo lives in iCloud Drive. `node_modules` and `.next` sync slowly and can fill the disk. Prefer a non-iCloud folder for development.
 
 ---
 
@@ -150,16 +158,13 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 ---
 
-## 9. Start here (first session)
+## 9. Start here (next session)
 
-1. Read `AGENTS.md` and skim `node_modules/next/dist/docs/` on proxy and route handlers.
-2. Create a dev Turso DB, run the app locally, and click through every page so you know what exists.
-3. Start **Phase 0, task 4 (auth)**, even before the Drizzle move. Closing the open APIs is the most urgent fix. A minimal version (Google login + allowlist + `requireUser` on every route) can ship in a day.
-4. Then do Phase 0 tasks 2, 3 and 6 (cleanup, Drizzle, money/GST/numbering with tests), then CI.
-5. Update this file at the end of every session:
-   - what changed
-   - what's next
-   - any new gotcha
+1. Read `AGENTS.md`, then this file.
+2. Get the branch merged: set up Google OAuth, add env vars on Vercel, run `npm run db:migrate` on production, deploy, sign in once as admin, and add the other team emails to `allowed_emails`.
+3. Run the Notion import with `--dry-run` against the real CSV export and fix the column alias lists in `src/server/import/notion.ts`. Then import for real and click through `/crm`.
+4. Start **Phase 2** (document engine, invoices, work orders). Answer the open questions in section 8 first, especially the last invoice number.
+5. Update this file at the end of every session.
 
 ---
 
@@ -168,6 +173,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | Date | Who | What |
 |---|---|---|
 | 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. No code changed. |
+| 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients/products/meetings). 37 tests pass; lint, tsc and build clean; API verified end to end with a signed test session. **Not done:** logo/signature uploads, AES crypto helper (Phase 4), dropping legacy `clients` table, real Notion import run, browser click-through (Google-only login), deploy. `PipelineBoard` was not reused for the lifecycle board; `lifecycle-board.tsx` is a small dedicated board because companies are real rows, not `pipeline_items`. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 

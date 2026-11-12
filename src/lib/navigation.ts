@@ -26,9 +26,9 @@ export const moduleNav: ModuleNavItem[] = [
     icon: LayoutDashboard,
   },
   {
-    title: "Client CRM + Outreach",
+    title: "Clients",
     href: "/crm",
-    description: "Leads, outreach, notes, reminders, and retention.",
+    description: "Companies, contacts, timeline and follow-ups.",
     icon: Users,
   },
   {
