@@ -43,6 +43,13 @@
       "when": 1794501617206,
       "tag": "0005_letters",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794505094763,
+      "tag": "0006_deals",
+      "breakpoints": true
     }
   ]
 }
