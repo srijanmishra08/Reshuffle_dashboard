@@ -131,7 +131,7 @@ npm run dev               # http://localhost:3000
 
 These are summarised here; the full reasoning is in `plan.md` §4.
 
-1. Turso is the only database. Prisma and Postgres are dropped.
+1. Turso is the only database today; Prisma is dropped. **Being revisited:** `docs/SUPABASE_MIGRATION_PLAN.md` plans a move to Supabase Postgres (plan only, nothing built, needs connection strings from Srijan).
 2. Drizzle is used for schema and migrations.
 3. Better Auth with Google sign-in, an email allowlist and four roles (ADMIN, MANAGER, MEMBER, FREELANCER).
 4. REST route handlers + TanStack Query. tRPC is dropped.
@@ -173,6 +173,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | Date | Who | What |
 |---|---|---|
 | 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. No code changed. |
+| 2026-11-12 | Claude with Srijan | Merged Phase 0 and 1 straight to `main` (`cf8651a`, as asked, no PR) and wrote `docs/SUPABASE_MIGRATION_PLAN.md`. Pushing to `main` may auto-deploy to Vercel: production needs the new env vars and `npm run db:migrate` or the deployed app will not work. Five Sonnet reviewers' findings (security, database, TypeScript, plan audit) are not yet fixed; main ones: allowlist removal does not revoke existing users, polling overwrites unsaved edits, demo-seed on board read path, timestamp format mixing, missing route-level tests. |
 | 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients/products/meetings). 37 tests pass; lint, tsc and build clean; API verified end to end with a signed test session. **Not done:** logo/signature uploads, AES crypto helper (Phase 4), dropping legacy `clients` table, real Notion import run, browser click-through (Google-only login), deploy. `PipelineBoard` was not reused for the lifecycle board; `lifecycle-board.tsx` is a small dedicated board because companies are real rows, not `pipeline_items`. |
 
 ## 11. Backlog (ideas parked outside the current phases)
