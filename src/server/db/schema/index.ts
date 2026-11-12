@@ -7,3 +7,4 @@ export * from "./letters";
 export * from "./deals";
 export * from "./people";
 export * from "./scopes";
+export * from "./salary-slips";

@@ -99,4 +99,26 @@ export type LetterSnapshot = {
   body: string;
 };
 
-export type DocumentData = InvoiceSnapshot | WorkOrderSnapshot | CreditNoteData | LetterSnapshot;
+export type SalarySlipSnapshot = {
+  type: "SALARY_SLIP";
+  number: string;
+  fy: string;
+  issueDate: string;
+  payPeriod: string;
+  seller: SnapshotSeller;
+  employee: {
+    name: string;
+    role: string;
+    joinedOn: string | null;
+    panMasked: string | null;
+    bankAccountMasked: string | null;
+    bankIfsc: string | null;
+  };
+  earnings: { label: string; amountPaise: number }[];
+  deductions: { label: string; amountPaise: number }[];
+  grossPaise: number;
+  deductionsPaise: number;
+  netPaise: number;
+};
+
+export type DocumentData = InvoiceSnapshot | WorkOrderSnapshot | CreditNoteData | LetterSnapshot | SalarySlipSnapshot;
