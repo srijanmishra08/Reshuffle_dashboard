@@ -22,6 +22,13 @@
       "when": 1794484505650,
       "tag": "0002_normalise_legacy_timestamps",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794490789476,
+      "tag": "0003_billing_invoices",
+      "breakpoints": true
     }
   ]
 }
