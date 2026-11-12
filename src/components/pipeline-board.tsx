@@ -100,13 +100,15 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
       return;
     }
 
-    const source = new EventSource(`/api/realtime/pipelines/${module}`);
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
 
-    source.onmessage = () => {
       void refreshItems().catch(() => {
         setMessage("Could not refresh pipeline items");
       });
-    };
+    }, 20000);
 
     const onFocus = () => {
       void refreshItems().catch(() => {
@@ -117,7 +119,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     window.addEventListener("focus", onFocus);
 
     return () => {
-      source.close();
+      window.clearInterval(poll);
       window.removeEventListener("focus", onFocus);
     };
   }, [definition, module, refreshItems]);

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
+import { getTursoClient } from "@/lib/turso";
 import { logActivity } from "@/server/services/activity";
+import { requireStaff } from "@/server/authz";
 
 const prioritySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
@@ -15,8 +16,12 @@ const createTaskSchema = z.object({
 });
 
 export async function GET() {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
 
     const rows = await client.execute(`
@@ -61,6 +66,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const body = await request.json();
   const parsed = createTaskSchema.safeParse(body);
 
@@ -82,7 +92,6 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
     const taskId = crypto.randomUUID();
 

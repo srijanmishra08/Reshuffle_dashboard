@@ -1,4 +1,4 @@
-import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
+import { getTursoClient } from "@/lib/turso";
 import { pipelineSeedItems, type PipelineSeedItem } from "@/lib/pipeline-seeds";
 import type { PipelineModule } from "@/server/models/pipeline";
 
@@ -94,7 +94,6 @@ function toPipelineItem(row: Record<string, unknown>): PipelineSeedItem | null {
 }
 
 async function listPipelineItemsFromTurso(module: PipelineModule): Promise<PipelineSeedItem[]> {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   const countResult = await client.execute({
@@ -154,7 +153,6 @@ export async function listPipelineItems(module: PipelineModule) {
 }
 
 export async function persistPipelineTransition(input: PersistTransitionInput) {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   await client.execute({
@@ -196,7 +194,6 @@ export async function createPipelineItem(module: PipelineModule, input: CreatePi
   if (nextPhone) nextMetadata.phone = nextPhone;
   if (nextEmail) nextMetadata.email = nextEmail;
 
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   await client.execute({
@@ -239,7 +236,6 @@ export async function updatePipelineItem(
   entityId: string,
   input: UpdatePipelineItemInput
 ) {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   const currentResult = await client.execute({
@@ -312,7 +308,6 @@ export async function updatePipelineItem(
 }
 
 export async function deletePipelineItem(module: PipelineModule, entityId: string) {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   const result = await client.execute({

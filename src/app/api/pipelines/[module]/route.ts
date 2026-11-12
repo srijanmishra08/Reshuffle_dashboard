@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pipelineModuleSchema } from "@/server/models/pipeline";
 import { getPipelineModel } from "@/server/services/pipeline";
+import { requireStaff } from "@/server/authz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,6 +11,11 @@ type RouteContext = {
 };
 
 export async function GET(_request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { module } = await context.params;
   const parsed = pipelineModuleSchema.safeParse(module);
 

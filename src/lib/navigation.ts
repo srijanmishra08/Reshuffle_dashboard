@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Receipt,
+  Settings,
   Users,
   UserSquare2,
 } from "lucide-react";
@@ -65,5 +66,11 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/docs",
     description: "SOPs, decision logs, and versioned docs.",
     icon: FileText,
+  },
+  {
+    title: "Settings",
+    href: "/settings",
+    description: "Organisation, tax and signatory details (admin).",
+    icon: Settings,
   },
 ];

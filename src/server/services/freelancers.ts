@@ -1,4 +1,4 @@
-import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
+import { getTursoClient } from "@/lib/turso";
 
 export type FreelancerRow = {
   id: string;
@@ -13,39 +13,6 @@ export type FreelancerRow = {
 
 type CreateFreelancerInput = Omit<FreelancerRow, "id">;
 type UpdateFreelancerInput = Partial<CreateFreelancerInput>;
-
-const defaultFreelancers: FreelancerRow[] = [
-  {
-    id: "fr-1",
-    freelancer: "Priya R",
-    skill: "Video Editing",
-    availability: "20 hrs/week",
-    project: "Campaign Launch Kit",
-    utilization: "78%",
-    payout: "35000",
-    performance: "4.7/5",
-  },
-  {
-    id: "fr-2",
-    freelancer: "Aman S",
-    skill: "Performance Marketing",
-    availability: "15 hrs/week",
-    project: "Lead Gen Sprint",
-    utilization: "91%",
-    payout: "42000",
-    performance: "4.4/5",
-  },
-  {
-    id: "fr-3",
-    freelancer: "Disha T",
-    skill: "UI/Visual Design",
-    availability: "10 hrs/week",
-    project: "Website Revamp",
-    utilization: "103%",
-    payout: "38000",
-    performance: "4.2/5",
-  },
-];
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -72,36 +39,7 @@ function toFreelancerRow(row: Record<string, unknown>): FreelancerRow | null {
 }
 
 export async function listFreelancers() {
-  await ensureTursoSchema();
   const client = getTursoClient();
-
-  const countResult = await client.execute({
-    sql: "SELECT COUNT(*) AS count FROM freelancers",
-  });
-
-  const countRow = countResult.rows[0] as Record<string, unknown> | undefined;
-  const count = Number(countRow?.count ?? 0);
-
-  if (count === 0) {
-    for (const row of defaultFreelancers) {
-      await client.execute({
-        sql: `
-          INSERT INTO freelancers (id, freelancer, skill, availability, project, utilization, payout, performance)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        args: [
-          row.id,
-          row.freelancer,
-          row.skill,
-          row.availability,
-          row.project,
-          row.utilization,
-          row.payout,
-          row.performance,
-        ],
-      });
-    }
-  }
 
   const result = await client.execute({
     sql: `
@@ -117,7 +55,6 @@ export async function listFreelancers() {
 }
 
 export async function createFreelancer(input: CreateFreelancerInput) {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   const next: FreelancerRow = {
@@ -152,7 +89,6 @@ export async function createFreelancer(input: CreateFreelancerInput) {
 }
 
 export async function updateFreelancer(id: string, input: UpdateFreelancerInput) {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   const currentResult = await client.execute({
@@ -204,7 +140,6 @@ export async function updateFreelancer(id: string, input: UpdateFreelancerInput)
 }
 
 export async function deleteFreelancer(id: string) {
-  await ensureTursoSchema();
   const client = getTursoClient();
 
   const result = await client.execute({

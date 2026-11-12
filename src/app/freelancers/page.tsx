@@ -43,13 +43,15 @@ export default function FreelancersPage() {
   }, []);
 
   useEffect(() => {
-    const source = new EventSource("/api/realtime/freelancers");
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
 
-    source.onmessage = () => {
       void refreshRows().catch(() => {
         setMessage("Could not refresh freelancers");
       });
-    };
+    }, 20000);
 
     const onFocus = () => {
       void refreshRows().catch(() => {
@@ -60,7 +62,7 @@ export default function FreelancersPage() {
     window.addEventListener("focus", onFocus);
 
     return () => {
-      source.close();
+      window.clearInterval(poll);
       window.removeEventListener("focus", onFocus);
     };
   }, []);

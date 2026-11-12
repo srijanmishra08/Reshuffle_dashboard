@@ -9,6 +9,10 @@ export default function Home() {
       title="ReShuffle Dashboard"
       subtitle="Founder-first business operating system with unified memory, automation, and execution."
     >
+      <p className="mb-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+        Sample data. Real KPIs arrive with the sales, billing and finance modules.
+      </p>
+
       <KpiGrid items={overviewKpis} />
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">

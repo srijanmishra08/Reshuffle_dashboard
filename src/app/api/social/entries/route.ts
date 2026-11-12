@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
+import { getTursoClient } from "@/lib/turso";
 import { logActivity } from "@/server/services/activity";
+import { requireStaff } from "@/server/authz";
 
 const platformSchema = z.enum(["Instagram", "LinkedIn", "YouTube", "X", "Facebook"]);
 const socialStatusSchema = z.enum(["IDEA", "DRAFT", "SCHEDULED", "POSTED"]);
@@ -41,8 +42,12 @@ function mapRowToSocial(row: Record<string, unknown>): SocialApiItem | null {
 }
 
 export async function GET() {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
 
     const result = await client.execute(
@@ -68,6 +73,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const body = await request.json();
   const parsed = createEntrySchema.safeParse(body);
 
@@ -76,7 +86,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
     const id = crypto.randomUUID();
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
+import { getTursoClient } from "@/lib/turso";
 import { logActivity } from "@/server/services/activity";
+import { requireStaff } from "@/server/authz";
 
 const platformSchema = z.enum(["Instagram", "LinkedIn", "YouTube", "X", "Facebook"]);
 const socialStatusSchema = z.enum(["IDEA", "DRAFT", "SCHEDULED", "POSTED"]);
@@ -30,6 +31,11 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { id } = await context.params;
   const body = await request.json();
   const parsed = updateEntrySchema.safeParse(body);
@@ -39,7 +45,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
 
     const updates: string[] = [];
@@ -149,10 +154,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { id } = await context.params;
 
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
 
     const result = await client.execute({

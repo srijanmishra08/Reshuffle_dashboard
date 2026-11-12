@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { moduleNav } from "@/lib/navigation";
 import { cn } from "@/components/ui/helpers";
+import { SignOutButton } from "@/components/sign-out-button";
 
 type DashboardShellProps = {
   title: string;
@@ -51,6 +52,9 @@ export function DashboardShell({ title, subtitle, children }: DashboardShellProp
               );
             })}
           </nav>
+          <div className="mt-6 border-t border-slate-200 pt-4">
+            <SignOutButton />
+          </div>
         </aside>
 
         <main className="mt-12 flex-1 rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-6 md:mt-0">

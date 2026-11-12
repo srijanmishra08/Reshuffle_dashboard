@@ -5,7 +5,7 @@ import {
   updatePipelineItemSchema,
 } from "@/server/models/pipeline";
 import { deletePipelineItem, updatePipelineItem } from "@/server/services/pipeline-items";
-import { publishRealtime } from "@/server/services/realtime";
+import { requireStaff } from "@/server/authz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,6 +15,11 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { module, entityId } = await context.params;
   const parsedModule = pipelineModuleSchema.safeParse(module);
 
@@ -53,10 +58,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Pipeline item not found" }, { status: 404 });
     }
 
-    publishRealtime(`pipeline:${moduleValue}`, {
-      type: "pipeline_item_updated",
-      payload: { entityId, stage: updated.stage },
-    });
 
     return NextResponse.json({ data: updated });
   } catch {
@@ -65,6 +66,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { module, entityId } = await context.params;
   const parsedModule = pipelineModuleSchema.safeParse(module);
 
@@ -85,10 +91,6 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Pipeline item not found" }, { status: 404 });
     }
 
-    publishRealtime(`pipeline:${parsedModule.data}`, {
-      type: "pipeline_item_deleted",
-      payload: { entityId },
-    });
 
     return NextResponse.json({ ok: true });
   } catch {

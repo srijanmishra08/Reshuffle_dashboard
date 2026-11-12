@@ -1,4 +1,4 @@
-import { ensureTursoSchema, getTursoClient } from "@/lib/turso";
+import { getTursoClient } from "@/lib/turso";
 
 type LogActivityInput = {
   actorId?: string;
@@ -11,7 +11,6 @@ type LogActivityInput = {
 
 export async function logActivity(input: LogActivityInput) {
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
     const id = crypto.randomUUID();
 
@@ -56,7 +55,6 @@ export async function logActivity(input: LogActivityInput) {
 
 export async function getRecentActivity(limit = 20) {
   try {
-    await ensureTursoSchema();
     const client = getTursoClient();
 
     const result = await client.execute({

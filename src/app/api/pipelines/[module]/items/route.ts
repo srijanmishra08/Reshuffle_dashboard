@@ -6,7 +6,7 @@ import {
 } from "@/server/models/pipeline";
 import { getPipelineModel } from "@/server/services/pipeline";
 import { createPipelineItem, listPipelineItems } from "@/server/services/pipeline-items";
-import { publishRealtime } from "@/server/services/realtime";
+import { requireStaff } from "@/server/authz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,6 +16,11 @@ type RouteContext = {
 };
 
 export async function GET(_request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { module } = await context.params;
   const parsed = pipelineModuleSchema.safeParse(module);
 
@@ -38,6 +43,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   const { module } = await context.params;
   const parsedModule = pipelineModuleSchema.safeParse(module);
 
@@ -82,10 +92,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       metadata: parsedBody.data.metadata,
     });
 
-    publishRealtime(`pipeline:${moduleValue}`, {
-      type: "pipeline_item_created",
-      payload: { entityId: item.id, stage: item.stage },
-    });
 
     return NextResponse.json({ data: item }, { status: 201 });
   } catch {

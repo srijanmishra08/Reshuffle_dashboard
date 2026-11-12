@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { deleteFreelancer, updateFreelancer } from "@/server/services/freelancers";
-import { publishRealtime } from "@/server/services/realtime";
+import { requireStaff } from "@/server/authz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,6 +21,11 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
     const { id } = await context.params;
     const body = await request.json();
@@ -36,10 +41,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Freelancer not found" }, { status: 404 });
     }
 
-    publishRealtime("freelancers", {
-      type: "freelancer_updated",
-      payload: { id },
-    });
 
     return NextResponse.json({ data: updated });
   } catch {
@@ -48,6 +49,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
     const { id } = await context.params;
     const removed = await deleteFreelancer(id);
@@ -56,10 +62,6 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Freelancer not found" }, { status: 404 });
     }
 
-    publishRealtime("freelancers", {
-      type: "freelancer_deleted",
-      payload: { id },
-    });
 
     return NextResponse.json({ ok: true });
   } catch {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createFreelancer, listFreelancers } from "@/server/services/freelancers";
-import { publishRealtime } from "@/server/services/realtime";
+import { requireStaff } from "@/server/authz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,6 +17,11 @@ const createFreelancerSchema = z.object({
 });
 
 export async function GET() {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
     const rows = await listFreelancers();
     return NextResponse.json({ data: rows });
@@ -26,6 +31,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff();
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
     const body = await request.json();
     const parsedBody = createFreelancerSchema.safeParse(body);
@@ -36,10 +46,6 @@ export async function POST(request: NextRequest) {
 
     const created = await createFreelancer(parsedBody.data);
 
-    publishRealtime("freelancers", {
-      type: "freelancer_created",
-      payload: { id: created.id },
-    });
 
     return NextResponse.json({ data: created }, { status: 201 });
   } catch {
