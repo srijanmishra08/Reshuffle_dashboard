@@ -3,7 +3,7 @@ import { getSessionCookie } from "better-auth/cookies";
 
 // Optimistic gate only: checks that a session cookie exists. Real authorisation
 // (session validity, role) happens in route handlers via `requireRole`.
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/cron", "/p/"];
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/cron", "/p/", "/api/p/"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
