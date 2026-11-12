@@ -24,7 +24,7 @@ const OPEN_STATUSES = ["ISSUED", "PARTIALLY_PAID"] as const;
 
 type InvoiceRow = typeof invoices.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-type Line = {
+export type Line = {
   position: number;
   description: string;
   sacCode: string | null;
@@ -34,7 +34,7 @@ type Line = {
   taxable: boolean;
 };
 
-function todayIst(now = new Date()): string {
+export function todayIst(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
 }
 
@@ -44,7 +44,7 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function priced(items: InvoiceItemInput[]): Line[] {
+export function priced(items: InvoiceItemInput[]): Line[] {
   return items.map((item, position) => ({
     position,
     description: item.description,
@@ -64,12 +64,12 @@ function safeJson(value: string): unknown {
   }
 }
 
-async function loadOrgSettings(db: DbOrTx, orgId: string) {
+export async function loadOrgSettings(db: DbOrTx, orgId: string) {
   const rows = await db.select().from(orgSettings).where(eq(orgSettings.orgId, orgId)).limit(1);
   return rows[0];
 }
 
-async function loadCompany(db: DbOrTx, orgId: string, companyId: string) {
+export async function loadCompany(db: DbOrTx, orgId: string, companyId: string) {
   const rows = await db
     .select()
     .from(companies)
@@ -104,7 +104,7 @@ async function findInvoice(db: DbOrTx, orgId: string, id: string): Promise<Invoi
 }
 
 /** Tax columns for a set of lines. Needs the org state to pick CGST+SGST vs IGST. */
-async function computeTotals(
+export async function computeTotals(
   db: DbOrTx,
   orgId: string,
   company: typeof companies.$inferSelect,
