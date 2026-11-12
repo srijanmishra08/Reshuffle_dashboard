@@ -58,3 +58,8 @@ export async function requireRole(allowed: readonly Role[]): Promise<Guard> {
 export function requireStaff(): Promise<Guard> {
   return requireRole(STAFF);
 }
+
+/** Money documents (invoices, payments, work orders): admins and managers only. */
+export function requireBilling(): Promise<Guard> {
+  return requireRole(["ADMIN", "MANAGER"]);
+}
