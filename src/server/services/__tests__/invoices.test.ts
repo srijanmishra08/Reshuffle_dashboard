@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb } from "@/test/db";
+import { eq } from "drizzle-orm";
 import { schema, type Db } from "@/server/db/client";
 import { createCompany } from "@/server/services/companies";
 import {
@@ -181,6 +182,13 @@ describe("payments", () => {
     expect(full.status).toBe("PAID");
     expect(full.outstandingPaise).toBe(0);
     expect(full.payments).toHaveLength(2);
+
+    // Each payment booked one INCOME ledger entry, linked by payment id.
+    const entries = await db.select().from(schema.ledgerEntries).where(eq(schema.ledgerEntries.sourceType, "PAYMENT"));
+    const mine = entries.filter((e) => full.payments.some((p) => p.id === e.sourceId));
+    expect(mine).toHaveLength(2);
+    expect(mine.every((e) => e.kind === "INCOME")).toBe(true);
+    expect(mine.reduce((s, e) => s + e.amountPaise, 0)).toBe(118_000_00);
   });
 
   it("rejects overpayment and payments on drafts", async () => {

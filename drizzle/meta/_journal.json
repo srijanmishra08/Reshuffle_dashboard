@@ -85,6 +85,13 @@
       "when": 1794512662769,
       "tag": "0011_delivery_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794516069052,
+      "tag": "0012_finance_ledger",
+      "breakpoints": true
     }
   ]
 }
