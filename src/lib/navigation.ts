@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Code2,
   FileText,
+  Mail,
   FileSpreadsheet,
   LayoutDashboard,
   Megaphone,
@@ -44,6 +45,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/work-orders",
     description: "Issue and track customer work orders.",
     icon: ClipboardList,
+  },
+  {
+    title: "Letters",
+    href: "/letters",
+    description: "Numbered letters on letterhead.",
+    icon: Mail,
   },
   {
     title: "Project Management",

@@ -37,7 +37,7 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 | Finance page | **Not persisted** | Phase 6 |
 | Events page | Fixed | Now shows the `events` pipeline board |
 | Removed | Gone | Prisma, tRPC, BullMQ worker, in-memory SSE realtime, automation trigger route, `/api/clients` |
-| Tests / CI | **Done** | Vitest (`npm test`), 37 tests. `.github/workflows/ci.yml` runs lint, tsc, test, build. |
+| Tests / CI | **Done** | Vitest (`npm test`), 81 tests. `.github/workflows/ci.yml` runs lint, tsc, test, build. |
 
 ### Sibling repo: `reshuffle-invoice`
 - Static HTML: `invoice-generator.html`, `work-order.html`, `offer-letter.html`, `salary-slip.html`, `letterhead.html`.
@@ -173,6 +173,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 | Date | Who | What |
 |---|---|---|
+| 2026-11-12 | Claude (scheduled run) | **Found that PRs #4 (2c PDF engine) and #5 (2d billing UI) never reached `main`**: they were merged into stacked branches after the lower PRs had already landed. Fixed with three PRs: **#7** `claude/phase-2cd-restore` (plain merge of 2c+2d onto main, merge first), **2e** `claude/phase-2e-work-order-ui` (work order create/edit/issue/complete/cancel UI, base 2cd-restore), **2f** `claude/phase-2f-letters` (letters: table + migration `0005`, service, `LT` series, PDF template, `/api/letters/*`, `/letters` UI, nav, 5 tests; base 2e). 81 tests pass. **Merge in order and retarget each PR to `main` before merging the next** (or merge the top PR only). Needs `npm run db:migrate` (0005) before deploy. **Still open in Phase 2:** billing cutover (last invoice number, CA sign-off, redirect old site, remove public PNGs). |
 | 2026-11-12 | Claude (scheduled run) | Phase 2 started, as stacked PRs. **#2 (2a)** invoices backend: tables, service (idempotent issue, payments, credit-note cancel, overdue), `/api/invoices/*`, `/api/cron/daily` + `vercel.json`. **#3 (2b, base 2a)** work orders backend + `/api/work-orders/*`. Both ADMIN/MANAGER only (`requireBilling`). 72 tests pass. **Next (2c):** PDF engine + templates (`@react-pdf/renderer`, Noto Sans for ₹), Billing nav group and `/invoices`, `/work-orders` UI, letters, then cutover once the last invoice number and CA sign-off are known. Needs `CRON_SECRET` and `npm run db:migrate` (0003, 0004) before deploy. |
 | 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. No code changed. |
 | 2026-11-12 | Claude with Srijan | Supabase migration Step 1 done (see `docs/SUPABASE_MIGRATION_PLAN.md`): all raw SQL ported to Drizzle services, timestamps normalised (migration 0002), demo seeding removed, 46 tests. Committed locally on `main`, not pushed. Next: Step 2 (Postgres schema), which needs the pooler connection string from Srijan. |

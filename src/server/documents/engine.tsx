@@ -4,12 +4,14 @@ import { schema, type Db } from "@/server/db/client";
 import { fail, ok, type Result } from "@/server/lib/result";
 import type { ServiceContext } from "@/server/services/companies";
 import { getInvoiceSnapshot } from "@/server/services/invoices";
+import { getLetterSnapshot } from "@/server/services/letters";
 import { getWorkOrderSnapshot } from "@/server/services/work-orders";
 import { registerFonts } from "./fonts";
 import { CreditNoteDocument } from "./templates/credit-note";
 import { InvoiceDocument } from "./templates/invoice";
+import { LetterDocument } from "./templates/letter";
 import { WorkOrderDocument } from "./templates/work-order";
-import type { CreditNoteData, DocumentData, InvoiceSnapshot, WorkOrderSnapshot } from "./types";
+import type { CreditNoteData, DocumentData, InvoiceSnapshot, LetterSnapshot, WorkOrderSnapshot } from "./types";
 
 export type RenderedPdf = { filename: string; buffer: Buffer };
 
@@ -24,6 +26,8 @@ export async function renderDocument(data: DocumentData): Promise<RenderedPdf> {
       return { filename: safeName(data.number), buffer: await renderToBuffer(<InvoiceDocument data={data} />) };
     case "WORK_ORDER":
       return { filename: safeName(data.number), buffer: await renderToBuffer(<WorkOrderDocument data={data} />) };
+    case "LETTER":
+      return { filename: safeName(data.number), buffer: await renderToBuffer(<LetterDocument data={data} />) };
     case "CREDIT_NOTE":
       return { filename: safeName(data.number), buffer: await renderToBuffer(<CreditNoteDocument data={data} />) };
   }
@@ -44,6 +48,12 @@ export async function renderWorkOrderPdf(db: Db, ctx: ServiceContext, id: string
   const snapshot = await getWorkOrderSnapshot(db, ctx, id);
   if (!snapshot.ok) return snapshot;
   return ok(await renderDocument(snapshot.data as unknown as WorkOrderSnapshot));
+}
+
+export async function renderLetterPdf(db: Db, ctx: ServiceContext, id: string): Promise<Result<RenderedPdf>> {
+  const snapshot = await getLetterSnapshot(db, ctx, id);
+  if (!snapshot.ok) return snapshot;
+  return ok(await renderDocument(snapshot.data as unknown as LetterSnapshot));
 }
 
 /** The credit note reverses the whole invoice, so it reuses the invoice's frozen figures. */
