@@ -9,3 +9,4 @@ export * from "./people";
 export * from "./scopes";
 export * from "./salary-slips";
 export * from "./sharing";
+export * from "./delivery";
