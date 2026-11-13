@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { safeNextPath } from "@/lib/safe-next";
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -11,8 +12,7 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
 
-    const next = new URLSearchParams(window.location.search).get("next");
-    const callbackURL = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+    const callbackURL = safeNextPath(new URLSearchParams(window.location.search).get("next"));
 
     const result = await authClient.signIn.social({ provider: "google", callbackURL });
 
