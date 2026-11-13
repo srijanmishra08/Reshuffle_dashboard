@@ -15,6 +15,13 @@
       "when": 1794486739931,
       "tag": "0001_seed_verticals",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794526711429,
+      "tag": "0002_billing_invoices",
+      "breakpoints": true
     }
   ]
 }
