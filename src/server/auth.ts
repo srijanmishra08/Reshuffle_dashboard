@@ -4,37 +4,18 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/server/db/client";
-import { isRole, type Role } from "@/server/roles";
-
-function bootstrapAdminEmails(): string[] {
-  return (process.env.BOOTSTRAP_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-}
+import type { Role } from "@/server/roles";
+import { resolveRoleForEmail as resolveRole } from "@/server/session-user";
 
 /** Decide whether an email may sign up, and with which role. Returns null if not allowed. */
-export async function resolveRoleForEmail(email: string): Promise<Role | null> {
-  const normalized = email.trim().toLowerCase();
-
-  if (bootstrapAdminEmails().includes(normalized)) {
-    return "ADMIN";
-  }
-
-  const rows = await getDb()
-    .select({ role: schema.allowedEmails.role })
-    .from(schema.allowedEmails)
-    .where(eq(schema.allowedEmails.email, normalized))
-    .limit(1);
-
-  const role = rows[0]?.role;
-  return role && isRole(role) ? role : null;
+export function resolveRoleForEmail(email: string): Promise<Role | null> {
+  return resolveRole(getDb(), email);
 }
 
 function createAuth() {
   return betterAuth({
     database: drizzleAdapter(getDb(), {
-      provider: "sqlite",
+      provider: "pg",
       schema: {
         user: schema.user,
         session: schema.session,
@@ -66,6 +47,22 @@ function createAuth() {
             }
 
             return { data: { ...user, email: user.email.toLowerCase(), role } };
+          },
+        },
+      },
+      session: {
+        create: {
+          before: async (session) => {
+            const rows = await getDb()
+              .select({ email: schema.user.email, active: schema.user.active })
+              .from(schema.user)
+              .where(eq(schema.user.id, session.userId))
+              .limit(1);
+            const record = rows[0];
+
+            if (!record || record.active === false || !(await resolveRoleForEmail(record.email))) {
+              throw new APIError("FORBIDDEN", { message: "This email is no longer on the allowlist." });
+            }
           },
         },
       },
