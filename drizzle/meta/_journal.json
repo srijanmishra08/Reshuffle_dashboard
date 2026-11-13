@@ -64,6 +64,13 @@
       "when": 1794541315436,
       "tag": "0008_people",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794544752071,
+      "tag": "0009_salary_slips",
+      "breakpoints": true
     }
   ]
 }
