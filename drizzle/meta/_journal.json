@@ -50,6 +50,13 @@
       "when": 1794537625509,
       "tag": "0006_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794541168963,
+      "tag": "0007_scope_sharing",
+      "breakpoints": true
     }
   ]
 }
