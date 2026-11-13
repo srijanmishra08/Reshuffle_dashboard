@@ -1,15 +1,11 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { getAuth } from "@/server/auth";
-import { isRole, roleAllowed, STAFF, type Role } from "@/server/roles";
+import { getDb } from "@/server/db/client";
+import { roleAllowed, STAFF, type Role } from "@/server/roles";
+import { resolveSessionUser, type AuthedUser } from "@/server/session-user";
 
-export type AuthedUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: Role;
-  orgId: string;
-};
+export type { AuthedUser };
 
 export type Guard =
   | { ok: true; user: AuthedUser }
@@ -26,17 +22,11 @@ export async function getSessionUser(): Promise<AuthedUser | null> {
     | (NonNullable<typeof session>["user"] & { role?: string; orgId?: string; active?: boolean })
     | undefined;
 
-  if (!user || user.active === false) {
+  if (!user) {
     return null;
   }
 
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: isRole(user.role) ? user.role : "MEMBER",
-    orgId: user.orgId ?? "default",
-  };
+  return resolveSessionUser(getDb(), user);
 }
 
 /** Route-handler guard. Usage: `const g = await requireRole(["ADMIN"]); if (!g.ok) return g.response;` */
