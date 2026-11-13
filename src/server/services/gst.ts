@@ -34,6 +34,9 @@ export type TaxResult = {
 
 export const DEFAULT_GST_BPS = 1800;
 
+/** Largest single line (₹100 crore). Keeps amount * bps well inside Number.MAX_SAFE_INTEGER. */
+export const MAX_LINE_PAISE = 100_000_000_000;
+
 /** Round-half-up for non-negative integers: round(amount * bps / 10000). */
 function percentOf(amountPaise: number, bps: number): number {
   return Math.floor((amountPaise * bps + 5000) / 10000);
@@ -61,6 +64,12 @@ export function resolveTaxMode(input: Pick<TaxInput, "orgState" | "placeOfSupply
  */
 export function computeTax(input: TaxInput): TaxResult {
   const rateBps = input.rateBps ?? DEFAULT_GST_BPS;
+
+  // Even, so CGST and SGST are exact halves; capped at 100%.
+  if (!Number.isInteger(rateBps) || rateBps < 0 || rateBps > 10_000 || rateBps % 2 !== 0) {
+    throw new Error("GST rate must be an even integer number of basis points between 0 and 10000");
+  }
+
   const mode = resolveTaxMode(input);
   const halfBps = rateBps / 2;
 
@@ -70,8 +79,8 @@ export function computeTax(input: TaxInput): TaxResult {
   let igst = 0;
 
   for (const line of input.items) {
-    if (!Number.isSafeInteger(line.amountPaise) || line.amountPaise < 0) {
-      throw new Error("Line amounts must be non-negative integer paise");
+    if (!Number.isSafeInteger(line.amountPaise) || line.amountPaise < 0 || line.amountPaise > MAX_LINE_PAISE) {
+      throw new Error("Line amounts must be non-negative integer paise within the per-line limit");
     }
 
     subtotal += line.amountPaise;

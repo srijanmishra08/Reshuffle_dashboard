@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTax } from "@/server/services/gst";
+import { computeTax, MAX_LINE_PAISE } from "@/server/services/gst";
 
 const base = { orgState: "22", placeOfSupply: "22", hasGstin: true };
 
@@ -48,5 +48,17 @@ describe("computeTax", () => {
   it("rejects negative or fractional amounts", () => {
     expect(() => computeTax({ ...base, items: [{ amountPaise: -1 }] })).toThrow();
     expect(() => computeTax({ ...base, items: [{ amountPaise: 1.5 }] })).toThrow();
+  });
+
+  it("rejects odd, fractional, negative or over-100% rates", () => {
+    for (const rateBps of [1801, 1800.5, -2, 10_002, Number.NaN]) {
+      expect(() => computeTax({ ...base, rateBps, items: [{ amountPaise: 100 }] })).toThrow(/basis points/);
+    }
+    expect(computeTax({ ...base, rateBps: 500, items: [{ amountPaise: 10000 }] }).cgst).toBe(250);
+  });
+
+  it("bounds a single line amount", () => {
+    expect(() => computeTax({ ...base, items: [{ amountPaise: MAX_LINE_PAISE + 1 }] })).toThrow(/limit/);
+    expect(() => computeTax({ ...base, items: [{ amountPaise: MAX_LINE_PAISE }] })).not.toThrow();
   });
 });
