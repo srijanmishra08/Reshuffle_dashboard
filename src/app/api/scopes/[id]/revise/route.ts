@@ -1,0 +1,17 @@
+import { NextRequest } from "next/server";
+import { getDb } from "@/server/db/client";
+import { requireStaff } from "@/server/authz";
+import { respond } from "@/server/lib/result";
+import { toContext } from "@/server/lib/route";
+import { reviseScope } from "@/server/services/scopes";
+
+export const dynamic = "force-dynamic";
+
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function POST(_request: NextRequest, context: RouteContext) {
+  const guard = await requireStaff();
+  if (!guard.ok) return guard.response;
+  const { id } = await context.params;
+  return respond(await reviseScope(getDb(), toContext(guard.user), id), 201);
+}

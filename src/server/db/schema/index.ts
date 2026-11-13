@@ -4,3 +4,4 @@ export * from "./crm";
 export * from "./billing";
 export * from "./letters";
 export * from "./deals";
+export * from "./scopes";

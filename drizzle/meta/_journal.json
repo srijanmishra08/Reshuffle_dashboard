@@ -43,6 +43,13 @@
       "when": 1794537519741,
       "tag": "0005_deals",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794537625509,
+      "tag": "0006_scopes",
+      "breakpoints": true
     }
   ]
 }
