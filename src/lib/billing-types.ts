@@ -134,3 +134,30 @@ export type LetterDetail = LetterListRow & {
   body: string;
   isIssued: boolean;
 };
+
+export type PersonRow = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: string;
+  kind: "EMPLOYEE" | "INTERN" | "CONTRACTOR";
+  joinedOn: string | null;
+  panMasked: string | null;
+  bankAccountMasked: string | null;
+  bankIfsc: string | null;
+};
+
+/** `pan` and `bankAccount` are present only when the viewer is an ADMIN. */
+export type PersonDetail = PersonRow & { pan?: string | null; bankAccount?: string | null };
+
+export type SalarySlipRow = {
+  id: string;
+  personId: string;
+  personName: string;
+  payPeriod: string;
+  status: "DRAFT" | "ISSUED";
+  number: string | null;
+  grossPaise: number;
+  netPaise: number;
+};
