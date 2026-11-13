@@ -93,3 +93,28 @@ export const statusStyles: Record<string, string> = {
   COMPLETED: "bg-emerald-100 text-emerald-800",
   CANCELLED: "bg-rose-100 text-rose-800",
 };
+
+export type WorkOrderDetail = {
+  id: string;
+  number: string | null;
+  status: WorkOrderStatus;
+  companyId: string;
+  companyName: string;
+  customerRef: string | null;
+  requestedBy: string | null;
+  department: string | null;
+  jobDetails: string | null;
+  comments: string | null;
+  issueDate: string | null;
+  completedDate: string | null;
+  placeOfSupply: string | null;
+  taxMode: "INTRA" | "INTER" | string | null;
+  subtotalPaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+  roundOffPaise: number;
+  totalPaise: number;
+  isIssued: boolean;
+  items: InvoiceItem[];
+};

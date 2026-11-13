@@ -180,6 +180,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-12 | Claude (automated run) | B0 part 2: work orders backend ported to Postgres on `auto/port-work-orders-pg` (stacked on #25): tables `work_orders`, `work_order_items`, migration `0003_work_orders`, service, `/api/work-orders*`, 9 PGlite tests. Next: B1 PDF engine port (`claude/phase-2c-pdf-engine`), then the UI branches in order. |
 | 2026-11-13 | Claude (scheduled run) | B1: ported the PDF engine (Noto Sans with rupee glyph, invoice, work order and credit note templates, `/api/*/pdf` routes) from `claude/phase-2c-pdf-engine` onto the Postgres stack, stacked on #26. No schema change. Next: port billing UI (`claude/phase-2d-billing-ui`, 2e), then 2f letters, in branch order. |
 | 2026-11-13 | Claude (scheduled run) | B6: ported billing UI (`/invoices`, `/invoices/new`, `/invoices/[id]`, `/work-orders` list, nav) from `claude/phase-2d-billing-ui`, stacked on B1. No schema change. Next: 2e work order editor, 2f letters. |
+| 2026-11-13 | Claude (scheduled run) | B7 (UI part): ported the work order editor (`/work-orders/new`, `/work-orders/[id]`: draft, issue, complete, cancel) from `claude/phase-2e-work-order-ui`, stacked on B6 (#29). No schema change. Next: 2f letters port. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 
