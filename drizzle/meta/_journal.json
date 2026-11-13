@@ -71,6 +71,13 @@
       "when": 1794544752071,
       "tag": "0009_salary_slips",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794548370456,
+      "tag": "0010_delivery_projects",
+      "breakpoints": true
     }
   ]
 }
