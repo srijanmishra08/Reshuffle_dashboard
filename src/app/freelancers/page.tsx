@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 type FreelancerRow = {
@@ -18,7 +18,13 @@ export default function FreelancersPage() {
   const [rows, setRows] = useState<FreelancerRow[]>([]);
   const [message, setMessage] = useState("Loading freelancers...");
 
+  // Rows with edits that are not saved yet. A background refresh must never overwrite them,
+  // and a response that arrives after a newer request is dropped.
+  const dirtyIds = useRef(new Set<string>());
+  const requestSeq = useRef(0);
+
   async function refreshRows() {
+    const seq = ++requestSeq.current;
     const response = await fetch("/api/freelancers", { cache: "no-store" });
     const json = (await response.json()) as { data?: FreelancerRow[]; error?: string };
 
@@ -26,7 +32,14 @@ export default function FreelancersPage() {
       throw new Error(json.error ?? "Could not load freelancers");
     }
 
-    setRows(json.data);
+    if (seq !== requestSeq.current) {
+      return;
+    }
+
+    const fresh = json.data;
+    setRows((current) =>
+      fresh.map((row) => (dirtyIds.current.has(row.id) ? (current.find((c) => c.id === row.id) ?? row) : row))
+    );
   }
 
   useEffect(() => {
@@ -68,6 +81,7 @@ export default function FreelancersPage() {
   }, []);
 
   function updateRow(id: string, field: keyof Omit<FreelancerRow, "id">, value: string) {
+    dirtyIds.current.add(id);
     setRows((current) => current.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   }
 
@@ -131,7 +145,18 @@ export default function FreelancersPage() {
         return;
       }
 
-      setRows((current) => current.map((entry) => (entry.id === row.id ? (json.data as FreelancerRow) : entry)));
+      // If the row was edited again while this request was in flight, keep the newer text
+      // (and keep it marked unsaved); otherwise take the server copy.
+      const saved = json.data;
+      const unchanged = (entry: FreelancerRow) => JSON.stringify(entry) === JSON.stringify(row);
+      setRows((current) => {
+        const entry = current.find((r) => r.id === row.id);
+        if (entry && !unchanged(entry)) {
+          return current;
+        }
+        dirtyIds.current.delete(row.id);
+        return current.map((r) => (r.id === row.id ? saved : r));
+      });
       setMessage(`Saved ${json.data.freelancer}.`);
     } catch {
       setMessage("Could not save row");
@@ -151,6 +176,7 @@ export default function FreelancersPage() {
         return;
       }
 
+      dirtyIds.current.delete(id);
       setRows((current) => current.filter((row) => row.id !== id));
       setMessage("Deleted freelancer row.");
     } catch {

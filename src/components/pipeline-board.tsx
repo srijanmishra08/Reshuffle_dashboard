@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type DragEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import type { PipelineItem } from "@/lib/pipeline-types";
 import type { PipelineModule } from "@/server/models/pipeline";
 
@@ -20,7 +20,12 @@ type PipelineBoardProps = {
   assignees?: string[];
 };
 
-export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
+/** Keyed by module so all board state (cards, drafts, edits) resets when the module changes. */
+export function PipelineBoard(props: PipelineBoardProps) {
+  return <PipelineBoardInner key={props.module} {...props} />;
+}
+
+function PipelineBoardInner({ module, assignees }: PipelineBoardProps) {
   const supportsClientContact = module === "crm" || module === "outreach";
   const [items, setItems] = useState<PipelineItem[]>([]);
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
@@ -39,7 +44,13 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
   const [editStage, setEditStage] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
 
+  // Responses can arrive out of order, and a poll must not overwrite a write that is still
+  // in flight. `requestSeq` drops stale responses; `writesInFlight` defers polls during writes.
+  const requestSeq = useRef(0);
+  const writesInFlight = useRef(0);
+
   const refreshItems = useCallback(async () => {
+    const seq = ++requestSeq.current;
     const response = await fetch(`/api/pipelines/${module}/items`, {
       cache: "no-store",
     });
@@ -53,13 +64,17 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
       throw new Error(json.error ?? "Could not load pipeline items");
     }
 
+    if (seq !== requestSeq.current) {
+      return;
+    }
+
     setItems(json.data);
   }, [module]);
 
   useEffect(() => {
-    const run = async () => {
-      setItems([]);
+    let cancelled = false;
 
+    const run = async () => {
       try {
         const [definitionResponse, itemsResponse] = await Promise.all([
           fetch(`/api/pipelines/${module}`, { cache: "no-store" }),
@@ -69,6 +84,10 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
           data?: PipelineDefinition;
           error?: string;
         };
+
+        if (cancelled) {
+          return;
+        }
 
         if (!definitionResponse.ok || !definitionJson.data) {
           setMessage(definitionJson.error ?? "Could not load pipeline");
@@ -80,7 +99,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
             data?: PipelineItem[];
           };
 
-          if (itemsJson.data) {
+          if (itemsJson.data && !cancelled) {
             setItems(itemsJson.data);
           }
         }
@@ -89,11 +108,17 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
         setNewStage(definitionJson.data.defaultStage);
         setMessage("Drag a card to move between stages.");
       } catch {
-        setMessage("Could not load pipeline");
+        if (!cancelled) {
+          setMessage("Could not load pipeline");
+        }
       }
     };
 
     void run();
+
+    return () => {
+      cancelled = true;
+    };
   }, [module]);
 
   useEffect(() => {
@@ -102,7 +127,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     }
 
     const poll = window.setInterval(() => {
-      if (document.visibilityState !== "visible") {
+      if (document.visibilityState !== "visible" || writesInFlight.current > 0) {
         return;
       }
 
@@ -112,6 +137,10 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     }, 20000);
 
     const onFocus = () => {
+      if (writesInFlight.current > 0) {
+        return;
+      }
+
       void refreshItems().catch(() => {
         setMessage("Could not refresh pipeline items");
       });
@@ -145,6 +174,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
       return;
     }
 
+    writesInFlight.current += 1;
     try {
       const response = await fetch("/api/pipelines/transition", {
         method: "POST",
@@ -176,6 +206,8 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     } catch {
       setMessage(`Could not move ${card.title}.`);
       return;
+    } finally {
+      writesInFlight.current -= 1;
     }
 
     setMessage(`${card.title} moved from ${fromStage} to ${targetStage}.`);
@@ -188,6 +220,8 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
       return;
     }
 
+    let created = false;
+    writesInFlight.current += 1;
     try {
       const response = await fetch(`/api/pipelines/${module}/items`, {
         method: "POST",
@@ -210,11 +244,19 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
       if (!response.ok || !json.data) {
         setMessage(json.error ?? "Could not create card.");
       } else {
+        created = true;
         await refreshItems();
         setMessage(`Created ${json.data.title}.`);
       }
     } catch {
       setMessage("Could not create card.");
+    } finally {
+      writesInFlight.current -= 1;
+    }
+
+    // Keep what the user typed when the request failed, so they can retry.
+    if (!created) {
+      return;
     }
 
     setNewTitle("");
@@ -241,6 +283,7 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
       return;
     }
 
+    writesInFlight.current += 1;
     try {
       const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
         method: "PATCH",
@@ -272,10 +315,13 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     } catch {
       setMessage("Could not update card.");
       return;
+    } finally {
+      writesInFlight.current -= 1;
     }
   }
 
   async function deleteCard(itemId: string) {
+    writesInFlight.current += 1;
     try {
       const response = await fetch(`/api/pipelines/${module}/items/${itemId}`, {
         method: "DELETE",
@@ -292,6 +338,8 @@ export function PipelineBoard({ module, assignees }: PipelineBoardProps) {
     } catch {
       setMessage("Could not delete card.");
       return;
+    } finally {
+      writesInFlight.current -= 1;
     }
 
     if (editingId === itemId) {
