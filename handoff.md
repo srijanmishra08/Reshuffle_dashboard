@@ -181,6 +181,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-13 | Claude (scheduled run) | B1: ported the PDF engine (Noto Sans with rupee glyph, invoice, work order and credit note templates, `/api/*/pdf` routes) from `claude/phase-2c-pdf-engine` onto the Postgres stack, stacked on #26. No schema change. Next: port billing UI (`claude/phase-2d-billing-ui`, 2e), then 2f letters, in branch order. |
 | 2026-11-13 | Claude (scheduled run) | B6: ported billing UI (`/invoices`, `/invoices/new`, `/invoices/[id]`, `/work-orders` list, nav) from `claude/phase-2d-billing-ui`, stacked on B1. No schema change. Next: 2e work order editor, 2f letters. |
 | 2026-11-13 | Claude (scheduled run) | B7 (UI part): ported the work order editor (`/work-orders/new`, `/work-orders/[id]`: draft, issue, complete, cancel) from `claude/phase-2e-work-order-ui`, stacked on B6 (#29). No schema change. Next: 2f letters port. |
+| 2026-11-13 | Claude (scheduled run) | B8: ported letters (table `letters`, migration `0004_letters`, service, `/api/letters*`, PDF template, `/letters` UI, nav) from `claude/phase-2f-letters` to Postgres, stacked on B7 (#30). 5 PGlite tests. Migration number `0004` may need renumbering if another branch lands a migration first. Next: remaining A4/A5 items, then Phase 3 port (`claude/phase-3-deals`). |
 | 2026-11-13 | automated run | A5 (CRM part): `crm-workspace.tsx` and `company-detail.tsx` drop out-of-order load responses with a request counter; an optimistic lifecycle move invalidates in-flight loads; silent `.catch(() => undefined)` replaced by visible messages. With #27 this completes A5. No schema change. All Postgres ports from the old branches are now open as PRs #25-#40, so merging that stack bottom-up is the bottleneck. |
 | 2026-11-12 | Claude (automated run) | A5 partial on `auto/ui-robustness-boards`: pipeline board is keyed by module (state resets), drops stale responses, defers polls during writes, keeps the create form when the request fails; freelancers sheet no longer overwrites unsaved edits on poll. No tests (no component test harness yet). A8 needs no change: the migrations test already checks RLS on every public table. |
 | 2026-11-12 | Claude (scheduled run) | A4 (partial): route test harness mocks the session and DB and auto-discovers every `route.ts`; checks 401 signed out, 403 FREELANCER (and non-admins on `/api/settings`), plus 400/404/org isolation for companies. Remaining groups listed under A4. No migration. |
@@ -251,7 +252,7 @@ An hourly scheduled task continues development. **Each run does exactly one task
 - [ ] B5. PDF template `invoice/v1` and `/api/pdf/documents/[id]`; credit note template.
 - [x] B6. (ported, PR stacked on B1) Invoice UI: `/invoices` list with status filters and receivables total, `/invoices/new` and `/invoices/[id]` with live preview.
 - [ ] B7. Work orders: schema (migration), service, API, UI, template.
-- [ ] B8. Letterhead letters: template and "New letter" page.
+- [x] B8. Letterhead letters: template and "New letter" page.
 - [ ] B9. `/api/cron/daily` (protected by `CRON_SECRET`) running `markOverdue`, plus `vercel.json` cron entry.
 - [ ] B10. BLOCKED until a human provides `BLOB_READ_WRITE_TOKEN`: logo and signature uploads in Settings.
 
