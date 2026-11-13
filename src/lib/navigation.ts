@@ -3,6 +3,7 @@ import {
   Briefcase,
   Contact,
   Handshake,
+  CalendarDays,
   ClipboardList,
   Code2,
   FileText,
@@ -72,6 +73,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/projects",
     description: "Kanban, milestones, and resource planning.",
     icon: Briefcase,
+  },
+  {
+    title: "Marketing",
+    href: "/marketing",
+    description: "Content calendar and social accounts.",
+    icon: CalendarDays,
   },
   {
     title: "Social Media",
