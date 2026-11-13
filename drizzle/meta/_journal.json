@@ -57,6 +57,13 @@
       "when": 1794541168963,
       "tag": "0007_scope_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794541315436,
+      "tag": "0008_people",
+      "breakpoints": true
     }
   ]
 }
