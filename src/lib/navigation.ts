@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Briefcase,
+  Handshake,
   ClipboardList,
   Code2,
   FileText,
@@ -33,6 +34,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/crm",
     description: "Companies, contacts, timeline and follow-ups.",
     icon: Users,
+  },
+  {
+    title: "Sales",
+    href: "/sales",
+    description: "Deals from lead to won.",
+    icon: Handshake,
   },
   {
     title: "Invoices",
