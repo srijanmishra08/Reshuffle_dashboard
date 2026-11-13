@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PipelineBoard } from "@/components/pipeline-board";
+import { DeliveryProjectList } from "@/components/projects/delivery-project-list";
 
 export default function ProjectsPage() {
   const [assignees, setAssignees] = useState<string[]>([]);
@@ -34,7 +35,16 @@ export default function ProjectsPage() {
 
   return (
     <DashboardShell title="Project Management" subtitle="Execution cockpit for milestones, tasks, and owners.">
-      <PipelineBoard module="projects" assignees={assignees} />
+      <div className="space-y-8">
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Delivery projects</h2>
+          <DeliveryProjectList />
+        </section>
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Task board (legacy)</h2>
+          <PipelineBoard module="projects" assignees={assignees} />
+        </section>
+      </div>
     </DashboardShell>
   );
 }
