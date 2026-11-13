@@ -184,6 +184,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-13 | Claude (scheduled run) | B6: ported billing UI (`/invoices`, `/invoices/new`, `/invoices/[id]`, `/work-orders` list, nav) from `claude/phase-2d-billing-ui`, stacked on B1. No schema change. Next: 2e work order editor, 2f letters. |
 | 2026-11-13 | Claude (scheduled run) | B7 (UI part): ported the work order editor (`/work-orders/new`, `/work-orders/[id]`: draft, issue, complete, cancel) from `claude/phase-2e-work-order-ui`, stacked on B6 (#29). No schema change. Next: 2f letters port. |
 | 2026-11-13 | Claude (scheduled run) | B8: ported letters (table `letters`, migration `0004_letters`, service, `/api/letters*`, PDF template, `/letters` UI, nav) from `claude/phase-2f-letters` to Postgres, stacked on B7 (#30). 5 PGlite tests. Migration number `0004` may need renumbering if another branch lands a migration first. Next: remaining A4/A5 items, then Phase 3 port (`claude/phase-3-deals`). |
+| 2026-11-13 | automated run | Phase 3c port: public scope accept page and share links on Postgres (`scope_shares`, `scope_acceptances`, `rate_limits` with bigint `window_start`, migration `0007_scope_sharing`), stacked on `auto/scopes-pg`. Next ports in order: `claude/phase-4-people`, `4b-salary-slips`, `4c-people-ui`, `5a`, `5b`, `6a`. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 
