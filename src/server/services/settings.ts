@@ -34,8 +34,20 @@ export type OrgSettings = OrgSettingsInput & { orgId: string; updatedAt: string 
 
 const emptyBank = { accountName: "", accountNumber: "", ifsc: "", bankName: "" };
 
-function parseBank(value: Record<string, string> | null | undefined) {
-  return { ...emptyBank, ...(value ?? {}) };
+/** The column is jsonb, so it can hold anything. Keep only the known string fields. */
+export function parseBank(value: unknown) {
+  const bank = { ...emptyBank };
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const key of Object.keys(emptyBank) as (keyof typeof emptyBank)[]) {
+      const field = (value as Record<string, unknown>)[key];
+      if (typeof field === "string") {
+        bank[key] = field;
+      }
+    }
+  }
+
+  return bank;
 }
 
 export async function getOrgSettings(orgId = "default"): Promise<OrgSettings> {
