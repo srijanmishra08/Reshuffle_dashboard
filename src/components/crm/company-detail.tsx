@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, jsonBody } from "@/lib/api";
 import {
   formatDate,
@@ -39,13 +39,18 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
   const base = `/api/companies/${companyId}`;
 
+  // Only the newest load may write state; older (out-of-order) responses are dropped.
+  const loadSeq = useRef(0);
+
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const [c, ct, it, mt] = await Promise.all([
       api<Company>(base),
       api<Contact[]>(`${base}/contacts`),
       api<Interaction[]>(`${base}/interactions`),
       api<Meeting[]>(`${base}/meetings`),
     ]);
+    if (seq !== loadSeq.current) return;
     setCompany(c);
     setContacts(ct);
     setInteractions(it);
