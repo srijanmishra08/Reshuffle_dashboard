@@ -58,7 +58,7 @@ export function CrmWorkspace() {
   useEffect(() => {
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void load().catch(() => undefined);
+        void load().catch(() => setMessage("Could not refresh. Showing the last loaded data."));
       }
     }, 30000);
     return () => window.clearInterval(poll);

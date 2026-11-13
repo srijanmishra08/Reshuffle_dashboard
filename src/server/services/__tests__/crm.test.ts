@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb } from "@/test/db";
-import type { Db } from "@/server/db/client";
+import { eq } from "drizzle-orm";
+import { schema, type Db } from "@/server/db/client";
 import { archiveCompany, createCompany, getCompany, listCompanies, listVerticals, updateCompany } from "@/server/services/companies";
 import { archiveContact, createContact, listContacts, updateContact } from "@/server/services/contacts";
 import {
@@ -159,6 +160,27 @@ describe("interactions and follow-ups", () => {
       contactId: stranger.id,
     });
     expect(wrongContact).toMatchObject({ ok: false, code: "VALIDATION" });
+  });
+
+  it("rejects an archived contact and records the interaction, company touch and audit row together", async () => {
+    const company = must(await createCompany(db, ctx, { name: "Archive Rule Co" }));
+    const contact = must(await createContact(db, ctx, company.id, { name: "Leaver" }));
+    const before = must(await getCompany(db, ctx, company.id)).updatedAt;
+
+    must(await archiveContact(db, ctx, company.id, contact.id));
+    expect(
+      await createInteraction(db, ctx, company.id, { type: "NOTE", summary: "x", contactId: contact.id })
+    ).toMatchObject({ ok: false, code: "VALIDATION" });
+
+    const created = must(await createInteraction(db, ctx, company.id, { type: "NOTE", summary: "ok" }));
+    const after = must(await getCompany(db, ctx, company.id)).updatedAt;
+    expect(new Date(after as string | Date).getTime()).toBeGreaterThanOrEqual(new Date(before as string | Date).getTime());
+
+    const audit = await db
+      .select()
+      .from(schema.activityLogs)
+      .where(eq(schema.activityLogs.entityId, created.id));
+    expect(audit.map((a) => a.action)).toEqual(["interaction.created"]);
   });
 
   it("does not list future follow-ups as due and refuses done on interactions without a next action", async () => {
