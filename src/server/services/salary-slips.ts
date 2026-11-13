@@ -10,8 +10,8 @@ import {
 import { newId } from "@/lib/ids";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
-import { nextNumber, type DbOrTx } from "@/server/services/numbering";
-import { loadOrgSettings, todayIst } from "@/server/services/invoices";
+import { nextNumber } from "@/server/services/numbering";
+import { type DbOrTx, loadOrgSettings, todayIst } from "@/server/services/invoices";
 import type { ServiceContext } from "@/server/services/companies";
 import type { SalarySlipSnapshot } from "@/server/documents/types";
 import type { PayLine } from "@/server/db/schema/salary-slips";
