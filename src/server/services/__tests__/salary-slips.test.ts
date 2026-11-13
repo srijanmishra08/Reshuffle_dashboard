@@ -99,6 +99,24 @@ describe("salary slip routes", () => {
     vi.resetModules();
     vi.doMock("@/server/auth", () => ({ getAuth: () => ({ api: { getSession: async () => null } }) }));
     vi.doMock("next/headers", () => ({ headers: async () => new Headers() }));
+    // getSessionUser re-checks the allowlist in the database; that lookup has its own tests.
+    vi.doMock("@/server/session-user", async (importOriginal) => {
+      const original = await importOriginal<typeof import("@/server/session-user")>();
+      return {
+        ...original,
+        resolveSessionUser: async (_db: unknown, raw: { id: string; email: string; name: string; role?: string; orgId?: string }) => ({
+          id: raw.id,
+          email: raw.email,
+          name: raw.name,
+          role: raw.role,
+          orgId: raw.orgId ?? "default",
+        }),
+      };
+    });
+    vi.doMock("@/server/db/client", async (importOriginal) => {
+      const original = await importOriginal<typeof import("@/server/db/client")>();
+      return { ...original, getDb: () => db };
+    });
     const anon = await import("@/app/api/salary-slips/route");
     expect((await anon.GET(new Request("http://x/api/salary-slips") as never)).status).toBe(401);
 
