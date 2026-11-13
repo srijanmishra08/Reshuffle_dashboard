@@ -179,6 +179,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-12 | Claude (automated run) | B0 part 1: invoices backend ported to Postgres on `auto/port-invoices-pg` (schema `billing.ts`, migration `0002_billing_invoices`, service, `/api/invoices*`, `/api/cron/daily`, cron in `vercel.json`, 17 PGlite tests). Date-only columns stay `YYYY-MM-DD` text, instants are timestamptz, `snapshot_json` is jsonb. Service defines its own `DbOrTx` so it survives A6 (`nextNumber` takes `Tx` only). Work orders (B0 part 2) are next and need this branch merged first. |
 | 2026-11-12 | Claude (automated run) | B0 part 2: work orders backend ported to Postgres on `auto/port-work-orders-pg` (stacked on #25): tables `work_orders`, `work_order_items`, migration `0003_work_orders`, service, `/api/work-orders*`, 9 PGlite tests. Next: B1 PDF engine port (`claude/phase-2c-pdf-engine`), then the UI branches in order. |
 | 2026-11-13 | Claude (scheduled run) | B1: ported the PDF engine (Noto Sans with rupee glyph, invoice, work order and credit note templates, `/api/*/pdf` routes) from `claude/phase-2c-pdf-engine` onto the Postgres stack, stacked on #26. No schema change. Next: port billing UI (`claude/phase-2d-billing-ui`, 2e), then 2f letters, in branch order. |
+| 2026-11-13 | Claude (scheduled run) | B6: ported billing UI (`/invoices`, `/invoices/new`, `/invoices/[id]`, `/work-orders` list, nav) from `claude/phase-2d-billing-ui`, stacked on B1. No schema change. Next: 2e work order editor, 2f letters. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 
@@ -233,7 +234,7 @@ An hourly scheduled task continues development. **Each run does exactly one task
 - [ ] B3. Invoice service: create draft, edit draft, issue (transaction: number via `nextNumber`, freeze `snapshot_json`, status, audit log, idempotency key), record payment, cancel via credit note, `markOverdue`. Tests for tax modes, numbering, immutability (409), partial then full payment.
 - [ ] B4. Invoice API routes (`/api/invoices*`) with role checks (ADMIN full, MANAGER create/issue, MEMBER read).
 - [ ] B5. PDF template `invoice/v1` and `/api/pdf/documents/[id]`; credit note template.
-- [ ] B6. Invoice UI: `/invoices` list with status filters and receivables total, `/invoices/new` and `/invoices/[id]` with live preview.
+- [x] B6. (ported, PR stacked on B1) Invoice UI: `/invoices` list with status filters and receivables total, `/invoices/new` and `/invoices/[id]` with live preview.
 - [ ] B7. Work orders: schema (migration), service, API, UI, template.
 - [ ] B8. Letterhead letters: template and "New letter" page.
 - [ ] B9. `/api/cron/daily` (protected by `CRON_SECRET`) running `markOverdue`, plus `vercel.json` cron entry.
