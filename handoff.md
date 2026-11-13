@@ -267,3 +267,4 @@ An hourly scheduled task continues development. **Each run does exactly one task
 ### Blocked on a human (do not attempt)
 
 - Vercel Blob token, CA sign-off on the invoice PDF and tax rules, the last invoice number used, the real Notion export, GST/SAC confirmation, any change to Vercel or Google settings, applying migrations to production.
+| 2026-11-13 | automated run | Ported Phase 5a delivery projects backend to Postgres (`auto/projects-pg`, stacked on `auto/people-ui-pg`): `delivery_projects` and `project_milestones` (migration `0010`, RLS on, one project per deal), `services/delivery.ts`, routes `/api/delivery-projects*` and `/api/deals/[id]/convert`, 7 PGlite tests. Milestone invoice amount is treated as **pre-GST** (confirm with the CA). Next ports: `claude/phase-5b-projects-ui` (UI), then `claude/phase-6a-finance-ledger`. |
