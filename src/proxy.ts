@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
+import { isPublicPath } from "@/lib/public-paths";
 
 // Optimistic gate only: checks that a session cookie exists. Real authorisation
 // (session validity, role) happens in route handlers via `requireRole`.
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/cron", "/p/", "/api/p/"];
-
+// Public paths live in `src/lib/public-paths.ts` (matched on path boundaries).
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 

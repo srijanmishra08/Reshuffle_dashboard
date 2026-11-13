@@ -5,13 +5,13 @@ describe("toPaise", () => {
   it("parses without float drift", () => {
     expect(toPaise("1234.50")).toBe(123450);
     expect(toPaise("0.1")).toBe(10);
-    expect(toPaise(19.99)).toBe(1999);
     expect(toPaise("1,00,000")).toBe(10000000);
   });
 
   it("rejects bad input", () => {
     expect(() => toPaise("12.345")).toThrow();
     expect(() => toPaise("abc")).toThrow();
+    expect(() => toPaise(19.99 as unknown as string)).toThrow();
   });
 });
 
