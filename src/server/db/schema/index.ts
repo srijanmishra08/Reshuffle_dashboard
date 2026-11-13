@@ -10,3 +10,4 @@ export * from "./people";
 export * from "./salary-slips";
 export * from "./delivery";
 export * from "./finance";
+export * from "./docs";

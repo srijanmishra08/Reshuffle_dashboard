@@ -85,6 +85,13 @@
       "when": 1794548630692,
       "tag": "0011_finance_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794562699448,
+      "tag": "0012_fine_silver_centurion",
+      "breakpoints": true
     }
   ]
 }
