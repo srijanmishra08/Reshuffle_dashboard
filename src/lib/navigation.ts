@@ -98,6 +98,12 @@ export const moduleNav: ModuleNavItem[] = [
     icon: Receipt,
   },
   {
+    title: "Marketing",
+    href: "/marketing",
+    description: "Social accounts and content calendar.",
+    icon: Megaphone,
+  },
+  {
     title: "Goals",
     href: "/goals",
     description: "Monthly goals by team.",
