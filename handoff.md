@@ -189,6 +189,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-13 | automated run | Phase 3c port: public scope accept page and share links on Postgres (`scope_shares`, `scope_acceptances`, `rate_limits` with bigint `window_start`, migration `0007_scope_sharing`), stacked on `auto/scopes-pg`. Next ports in order: `claude/phase-4-people`, `4b-salary-slips`, `4c-people-ui`, `5a`, `5b`, `6a`. |
 | 2026-11-13 | automated run | Phase 4a port: `people` table with AES-256-GCM PAN and bank fields (migration `0008_people`), service and `/api/people*`, stacked on `auto/scope-accept-pg`. Fixed a bug from the SQLite branch: the patch schema inherited create defaults, so a partial update reset `role` and `kind`. Needs `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`) set on Vercel before use. Next ports: `4b-salary-slips`, `4c-people-ui`, `5a`, `5b`, `6a`. |
 | 2026-11-13 | automated run | Phase 6b: finance reports (`auto/finance-reports-pg`, #42: receivables aging, GST summary, B2B CSV, no schema change) and the `/finance` UI (`auto/finance-ui-pg`, stacked on it: Ledger, Receivables, Monthly, GST tabs; the old sample projections are kept as a Plan tab, still unsaved because `finance_plans` is not built). Heads-up: money columns are int4, so one amount tops out near ₹2.14 crore; a bigint migration is worth doing before large invoices. Next: persisted `finance_plans`, attach-a-bill on ledger entries (needs Blob token), then Phase 5 payouts and the `/me` freelancer view. The merge backlog (#7-#43) is still the bottleneck. |
+| 2026-11-13 | automated run | Phase 7a docs (`auto/phase-7a-docs`, stacked on `auto/finance-ui-pg`): `docs` table (migration `0012`, RLS on), `services/docs.ts`, `/api/docs*` (staff), `/docs` search + editor with a text-only Markdown preview, 4 PGlite tests. The open PR stack (#25 to #43) is 19 deep and unmerged; merge it in order before more slices pile on. |
 
 ## 11. Backlog (ideas parked outside the current phases)
 
@@ -248,6 +249,14 @@ An hourly scheduled task continues development. **Each run does exactly one task
 - [x] B8. Letterhead letters: template and "New letter" page.
 - [ ] B9. `/api/cron/daily` (protected by `CRON_SECRET`) running `markOverdue`, plus `vercel.json` cron entry.
 - [ ] B10. BLOCKED until a human provides `BLOB_READ_WRITE_TOKEN`: logo and signature uploads in Settings.
+
+**C0. Phase 7 slices** (stacked on the Phase 6 branches)
+
+- [x] C7a. Docs: `docs` table (migration `0012`), service, `/api/docs*`, `/docs` workspace with search and a safe Markdown preview. Not done: seeding DL-001..005 (typed in by hand, never committed).
+- [ ] C7b. Goals: `goals` by month and team, `/goals` board.
+- [ ] C7c. Marketing: `social_accounts`, `content_items`, `/marketing` calendar and board.
+- [ ] C7d. Events: `events`, `event_team`, `event_registrations`, `/events` board and detail.
+- [ ] C7e. BLOCKED on Blob token: asset library.
 
 **C. Later phases:** continue in the order of `development-plan.md`: Phase 3 (deals, scopes, public accept page), Phase 4 (people documents), Phase 5 (projects and freelancers), Phase 6 (finance), Phase 7 (marketing, events, goals, docs), Phase 8 (overview, search, notifications). Break each into slices like section B and add them here before starting.
 
