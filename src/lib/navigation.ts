@@ -74,6 +74,12 @@ export const moduleNav: ModuleNavItem[] = [
     icon: Briefcase,
   },
   {
+    title: "Marketing",
+    href: "/marketing",
+    description: "Content calendar, board and social accounts.",
+    icon: Megaphone,
+  },
+  {
     title: "Social Media",
     href: "/social",
     description: "Kanban-only workflow for social execution.",
