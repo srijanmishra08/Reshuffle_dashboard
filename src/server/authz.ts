@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getAuth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
@@ -52,4 +53,18 @@ export function requireStaff(): Promise<Guard> {
 /** Money documents (invoices, payments, work orders): admins and managers only. */
 export function requireBilling(): Promise<Guard> {
   return requireRole(["ADMIN", "MANAGER"]);
+}
+
+/**
+ * Server-component guard for pages. Redirects signed-out visitors to /login and returns null
+ * when the user is signed in but their role is not allowed, so the page can render a no-access state.
+ */
+export async function requirePageRole(allowed: readonly Role[], returnTo: string): Promise<AuthedUser | null> {
+  const user = await getSessionUser();
+
+  if (!user) {
+    redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+  }
+
+  return roleAllowed(user.role, allowed) ? user : null;
 }
