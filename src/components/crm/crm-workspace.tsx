@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, jsonBody } from "@/lib/api";
 import {
   formatDate,
@@ -30,7 +30,11 @@ export function CrmWorkspace() {
   const [newVertical, setNewVertical] = useState("");
   const [newSource, setNewSource] = useState("");
 
+  // Only the newest load may write state; older (out-of-order) responses are dropped.
+  const loadSeq = useRef(0);
+
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (lifecycle) params.set("lifecycle", lifecycle);
@@ -40,6 +44,7 @@ export function CrmWorkspace() {
       api<Company[]>(`/api/companies?${params.toString()}`),
       api<FollowUp[]>("/api/followups"),
     ]);
+    if (seq !== loadSeq.current) return;
     setCompanies(companyRows);
     setFollowUps(followUpRows);
   }, [q, lifecycle, verticalId]);
@@ -58,7 +63,7 @@ export function CrmWorkspace() {
   useEffect(() => {
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void load().catch(() => undefined);
+        void load().catch(() => setMessage("Could not refresh. Showing the last loaded data."));
       }
     }, 30000);
     return () => window.clearInterval(poll);
@@ -82,6 +87,8 @@ export function CrmWorkspace() {
 
   async function moveCompany(company: Company, to: Lifecycle) {
     const previous = companies;
+    // Invalidate any in-flight load so it cannot overwrite this optimistic move.
+    loadSeq.current++;
     setCompanies((rows) => rows.map((row) => (row.id === company.id ? { ...row, lifecycle: to } : row)));
     try {
       await api<Company>(`/api/companies/${company.id}`, { method: "PATCH", ...jsonBody({ lifecycle: to }) });

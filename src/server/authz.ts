@@ -1,15 +1,12 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getAuth } from "@/server/auth";
-import { isRole, roleAllowed, STAFF, type Role } from "@/server/roles";
+import { getDb } from "@/server/db/client";
+import { roleAllowed, STAFF, type Role } from "@/server/roles";
+import { resolveSessionUser, type AuthedUser } from "@/server/session-user";
 
-export type AuthedUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: Role;
-  orgId: string;
-};
+export type { AuthedUser };
 
 export type Guard =
   | { ok: true; user: AuthedUser }
@@ -26,17 +23,11 @@ export async function getSessionUser(): Promise<AuthedUser | null> {
     | (NonNullable<typeof session>["user"] & { role?: string; orgId?: string; active?: boolean })
     | undefined;
 
-  if (!user || user.active === false) {
+  if (!user) {
     return null;
   }
 
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: isRole(user.role) ? user.role : "MEMBER",
-    orgId: user.orgId ?? "default",
-  };
+  return resolveSessionUser(getDb(), user);
 }
 
 /** Route-handler guard. Usage: `const g = await requireRole(["ADMIN"]); if (!g.ok) return g.response;` */
@@ -62,4 +53,18 @@ export function requireStaff(): Promise<Guard> {
 /** Money documents (invoices, payments, work orders): admins and managers only. */
 export function requireBilling(): Promise<Guard> {
   return requireRole(["ADMIN", "MANAGER"]);
+}
+
+/**
+ * Server-component guard for pages. Redirects signed-out visitors to /login and returns null
+ * when the user is signed in but their role is not allowed, so the page can render a no-access state.
+ */
+export async function requirePageRole(allowed: readonly Role[], returnTo: string): Promise<AuthedUser | null> {
+  const user = await getSessionUser();
+
+  if (!user) {
+    redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+  }
+
+  return roleAllowed(user.role, allowed) ? user : null;
 }

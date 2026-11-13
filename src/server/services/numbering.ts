@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 
@@ -27,8 +27,11 @@ export const defaultPrefixes: Record<DocType, string> = {
   LETTER: "LT",
 };
 
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-export type DbOrTx = Db | Tx;
+/** A drizzle transaction handle. Numbers must be allocated inside the issuing transaction. */
+export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** GST rule 46: the invoice number is at most 16 characters. */
+export const MAX_DOC_NUMBER_LENGTH = 16;
 
 /** Calendar parts in India time, so 1 April 00:30 IST is already the new FY. */
 function istParts(date: Date): { year: number; month: number } {
@@ -62,23 +65,38 @@ export function formatDocNumber(prefix: string, fy: string, value: number, paddi
 
 /**
  * Allocate the next gap-free number for a doc type and financial year.
- * Call inside the same transaction that issues the document so a failure
- * rolls the number back. Drafts must never call this.
+ * Takes a transaction (not the bare db) so the number is only ever allocated in
+ * the same transaction that issues the document; a failure rolls it back.
+ * Drafts must never call this. At a financial-year rollover the new series
+ * inherits the prefix and padding of the most recent earlier series.
  */
 export async function nextNumber(
-  db: DbOrTx,
+  tx: Tx,
   input: { orgId?: string; docType: DocType; date: Date; fyStartMonth?: number }
 ): Promise<{ number: string; fy: string; sequence: number }> {
   const orgId = input.orgId ?? "default";
   const fy = financialYear(input.date, input.fyStartMonth);
-  const prefix = defaultPrefixes[input.docType];
 
-  await db
+  const [previous] = await tx
+    .select({ prefix: schema.numberSeries.prefix, padding: schema.numberSeries.padding })
+    .from(schema.numberSeries)
+    .where(and(eq(schema.numberSeries.orgId, orgId), eq(schema.numberSeries.docType, input.docType)))
+    .orderBy(desc(schema.numberSeries.fy))
+    .limit(1);
+
+  await tx
     .insert(schema.numberSeries)
-    .values({ orgId, docType: input.docType, fy, prefix, nextValue: 1, padding: 3 })
+    .values({
+      orgId,
+      docType: input.docType,
+      fy,
+      prefix: previous?.prefix ?? defaultPrefixes[input.docType],
+      nextValue: 1,
+      padding: previous?.padding ?? 3,
+    })
     .onConflictDoNothing();
 
-  const rows = await db
+  const rows = await tx
     .update(schema.numberSeries)
     .set({ nextValue: sql`${schema.numberSeries.nextValue} + 1` })
     .where(
@@ -100,5 +118,11 @@ export async function nextNumber(
   }
 
   const sequence = row.nextValue - 1;
-  return { number: formatDocNumber(row.prefix, fy, sequence, row.padding), fy, sequence };
+  const number = formatDocNumber(row.prefix, fy, sequence, row.padding);
+
+  if (number.length > MAX_DOC_NUMBER_LENGTH) {
+    throw new Error(`Document number ${number} exceeds ${MAX_DOC_NUMBER_LENGTH} characters`);
+  }
+
+  return { number, fy, sequence };
 }
