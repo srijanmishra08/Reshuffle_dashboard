@@ -13,6 +13,15 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("@/server/auth", () => ({
   getAuth: () => ({ api: { getSession: async () => state.session } }),
 }));
+vi.mock("@/server/session-user", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/server/session-user")>();
+  // The allowlist lookup has its own tests (session-user.test.ts); here the session is trusted as given.
+  return {
+    ...original,
+    resolveSessionUser: async (_db: unknown, raw: { id: string; email: string; name: string; role?: string; orgId?: string; active?: boolean }) =>
+      raw.active === false ? null : { id: raw.id, email: raw.email, name: raw.name, role: raw.role, orgId: raw.orgId ?? "default" },
+  };
+});
 vi.mock("@/server/db/client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/server/db/client")>();
   return { ...original, getDb: () => state.db };
@@ -23,7 +32,15 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 // Every API route except Better Auth's own catch-all and the public health check.
 const loaders = import.meta.glob<Record<string, unknown>>("/src/app/api/**/route.ts");
-const PUBLIC = ["/src/app/api/auth/", "/src/app/api/health/"];
+// Public by design: Better Auth's catch-all, the health check, the cron route (gated by
+// CRON_SECRET, not by a session) and the client-facing scope accept route (gated by an
+// unguessable share token and rate limited per IP).
+const PUBLIC = [
+  "/src/app/api/auth/",
+  "/src/app/api/health/",
+  "/src/app/api/cron/",
+  "/src/app/api/p/",
+];
 const ADMIN_ONLY_FILES = ["/src/app/api/settings/route.ts"];
 
 function signIn(role: string, orgId = "default") {

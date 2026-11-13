@@ -13,6 +13,17 @@ vi.mock("@/server/auth", () => ({
   getAuth: () => ({ api: { getSession: async () => (state.user ? { user: state.user } : null) } }),
 }));
 
+vi.mock("@/server/db/client", () => ({ getDb: () => ({}) }));
+vi.mock("@/server/session-user", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/server/session-user")>();
+  // The allowlist lookup has its own tests (session-user.test.ts); here the session is trusted as given.
+  return {
+    ...original,
+    resolveSessionUser: async (_db: unknown, raw: { id: string; email: string; name: string; role?: string; orgId?: string; active?: boolean }) =>
+      raw.active === false ? null : { id: raw.id, email: raw.email, name: raw.name, role: raw.role, orgId: raw.orgId ?? "default" },
+  };
+});
+
 import { requirePageRole } from "@/server/authz";
 
 const user = (role: string) => ({ id: "u", email: "a@example.test", name: "A", role, orgId: "default" });
