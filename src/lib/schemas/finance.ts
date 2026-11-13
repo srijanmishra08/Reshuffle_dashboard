@@ -22,3 +22,13 @@ export const ledgerQuerySchema = z.object({
 
 /** Financial year start year, e.g. 2026 means April 2026 to March 2027. */
 export const monthlyQuerySchema = z.object({ fy: z.coerce.number().int().min(2000).max(2100) });
+
+export const agingQuerySchema = z.object({
+  asOf: dateOnly.optional(),
+});
+
+/** Financial year start year, optionally narrowed to one month (YYYY-MM) inside it. */
+export const gstQuerySchema = z.object({
+  fy: z.coerce.number().int().min(2000).max(2100),
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Use YYYY-MM").optional(),
+});
