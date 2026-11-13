@@ -55,7 +55,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   }, [base]);
 
   useEffect(() => {
-    void api<Vertical[]>("/api/verticals").then(setVerticals).catch(() => undefined);
+    void api<Vertical[]>("/api/verticals").then(setVerticals).catch(() => setMessage("Could not load verticals"));
     const timer = window.setTimeout(() => {
       void load().catch((error: Error) => setMessage(error.message));
     }, 0);
