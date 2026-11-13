@@ -80,6 +80,12 @@ export const moduleNav: ModuleNavItem[] = [
     icon: Megaphone,
   },
   {
+    title: "Marketing",
+    href: "/marketing",
+    description: "Content calendar, board and social accounts.",
+    icon: Megaphone,
+  },
+  {
     title: "App Development",
     href: "/app-dev",
     description: "Sprints, bugs, and deployment lifecycle.",
