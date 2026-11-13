@@ -73,12 +73,17 @@ export async function createInteraction(db: Db, ctx: ServiceContext, companyId: 
       .select({ id: contacts.id })
       .from(contacts)
       .where(
-        and(eq(contacts.id, input.contactId), eq(contacts.companyId, companyId), eq(contacts.orgId, ctx.orgId))
+        and(
+          eq(contacts.id, input.contactId),
+          eq(contacts.companyId, companyId),
+          eq(contacts.orgId, ctx.orgId),
+          isNull(contacts.archivedAt)
+        )
       )
       .limit(1);
 
     if (contact.length === 0) {
-      return fail("VALIDATION", "Contact does not belong to this company");
+      return fail("VALIDATION", "Contact does not belong to this company or is archived");
     }
   }
 
@@ -87,42 +92,47 @@ export async function createInteraction(db: Db, ctx: ServiceContext, companyId: 
   }
 
   const now = new Date();
-  const inserted = await db
-    .insert(interactions)
-    .values({
-      orgId: ctx.orgId,
-      companyId,
-      contactId: input.contactId ?? null,
-      type: input.type,
-      summary: input.summary,
-      at: input.at ? new Date(input.at) : now,
-      nextAction: input.nextAction ?? null,
-      nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
-      createdBy: ctx.userId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ id: interactions.id });
+  // Insert, touch the company and audit together: all or nothing.
+  const id = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(interactions)
+      .values({
+        orgId: ctx.orgId,
+        companyId,
+        contactId: input.contactId ?? null,
+        type: input.type,
+        summary: input.summary,
+        at: input.at ? new Date(input.at) : now,
+        nextAction: input.nextAction ?? null,
+        nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
+        createdBy: ctx.userId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: interactions.id });
 
-  const id = inserted[0].id;
+    const newId = inserted[0].id;
 
-  // Touching a company bumps it to the top of recent lists.
-  await db
-    .update(companies)
-    .set({ updatedAt: now })
-    .where(and(eq(companies.id, companyId), eq(companies.orgId, ctx.orgId)));
+    // Touching a company bumps it to the top of recent lists.
+    await tx
+      .update(companies)
+      .set({ updatedAt: now })
+      .where(and(eq(companies.id, companyId), eq(companies.orgId, ctx.orgId)));
 
-  await logActivity(
-    {
-      actorId: ctx.userId,
-      action: "interaction.created",
-      module: "crm",
-      entityType: "interaction",
-      entityId: id,
-      metadata: { companyId, type: input.type },
-    },
-    db
-  );
+    await logActivity(
+      {
+        actorId: ctx.userId,
+        action: "interaction.created",
+        module: "crm",
+        entityType: "interaction",
+        entityId: newId,
+        metadata: { companyId, type: input.type },
+      },
+      tx
+    );
+
+    return newId;
+  });
 
   return getInteraction(db, ctx, companyId, id);
 }
