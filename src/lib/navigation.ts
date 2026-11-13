@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Code2,
   FileText,
+  Target,
   Mail,
   FileSpreadsheet,
   LayoutDashboard,
@@ -95,6 +96,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/finance",
     description: "Revenue, expenses, payouts, and cash view.",
     icon: Receipt,
+  },
+  {
+    title: "Goals",
+    href: "/goals",
+    description: "Monthly goals by team.",
+    icon: Target,
   },
   {
     title: "Documentation",
