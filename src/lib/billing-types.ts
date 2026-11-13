@@ -118,3 +118,19 @@ export type WorkOrderDetail = {
   isIssued: boolean;
   items: InvoiceItem[];
 };
+
+export type LetterListRow = {
+  id: string;
+  number: string | null;
+  status: "DRAFT" | "ISSUED";
+  recipientName: string;
+  subject: string;
+  issueDate: string | null;
+};
+
+export type LetterDetail = LetterListRow & {
+  companyId: string | null;
+  recipientAddress: string | null;
+  body: string;
+  isIssued: boolean;
+};

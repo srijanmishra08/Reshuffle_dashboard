@@ -87,4 +87,16 @@ export type CreditNoteData = {
   roundOffPaise: number;
 };
 
-export type DocumentData = InvoiceSnapshot | WorkOrderSnapshot | CreditNoteData;
+export type LetterSnapshot = {
+  type: "LETTER";
+  number: string;
+  fy: string;
+  issueDate: string;
+  seller: SnapshotSeller;
+  recipientName: string;
+  recipientAddress: string | null;
+  subject: string;
+  body: string;
+};
+
+export type DocumentData = InvoiceSnapshot | WorkOrderSnapshot | CreditNoteData | LetterSnapshot;
