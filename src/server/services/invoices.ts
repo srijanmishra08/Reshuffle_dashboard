@@ -17,7 +17,7 @@ import { logActivity } from "@/server/services/activity";
 import { nextNumber } from "@/server/services/numbering";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings } = schema;
+const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings, ledgerEntries } = schema;
 
 const DEFAULT_DUE_DAYS = 15;
 const OPEN_STATUSES = ["ISSUED", "PARTIALLY_PAID"] as const;
@@ -504,6 +504,19 @@ export async function recordPayment(db: Db, ctx: ServiceContext, id: string, raw
       paidAt: input.paidAt,
       method: input.method,
       reference: input.reference ?? null,
+      createdBy: ctx.userId,
+    });
+    // Same transaction, so a payment and its ledger entry exist together or not at all.
+    await tx.insert(ledgerEntries).values({
+      orgId: ctx.orgId,
+      kind: "INCOME",
+      entryDate: input.paidAt,
+      amountPaise: input.amountPaise,
+      description: `Payment for invoice ${existing.number ?? id}`,
+      companyId: existing.companyId,
+      projectId: existing.projectId ?? null,
+      sourceType: "PAYMENT",
+      sourceId: paymentId,
       createdBy: ctx.userId,
     });
     return true;
