@@ -3,16 +3,28 @@
 import { useEffect, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 
-type FreelancerRow = {
-  id: string;
-  freelancer: string;
-  skill: string;
-  availability: string;
-  project: string;
-  utilization: string;
-  payout: string;
-  performance: string;
-};
+type FreelancerRow = { id: string } & Record<FieldKey, string>;
+
+const columns = [
+  { key: "freelancer", label: "Freelancer" },
+  { key: "skill", label: "Primary Skill" },
+  { key: "category", label: "Category" },
+  { key: "company", label: "Company" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "instagram", label: "Instagram" },
+  { key: "linkedin", label: "LinkedIn" },
+  { key: "xHandle", label: "X" },
+  { key: "website", label: "Website" },
+  { key: "availability", label: "Availability" },
+  { key: "project", label: "Current Project" },
+  { key: "utilization", label: "Utilization" },
+  { key: "payout", label: "Monthly Payout (Rs)" },
+  { key: "performance", label: "Performance" },
+] as const;
+
+type FieldKey = (typeof columns)[number]["key"];
 
 export default function FreelancersPage() {
   const [rows, setRows] = useState<FreelancerRow[]>([]);
@@ -80,7 +92,7 @@ export default function FreelancersPage() {
     };
   }, []);
 
-  function updateRow(id: string, field: keyof Omit<FreelancerRow, "id">, value: string) {
+  function updateRow(id: string, field: FieldKey, value: string) {
     dirtyIds.current.add(id);
     setRows((current) => current.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   }
@@ -90,15 +102,7 @@ export default function FreelancersPage() {
       const response = await fetch("/api/freelancers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          freelancer: "New Freelancer",
-          skill: "",
-          availability: "",
-          project: "",
-          utilization: "",
-          payout: "",
-          performance: "",
-        }),
+        body: JSON.stringify({ freelancer: "New Freelancer" }),
       });
 
       const json = (await response.json()) as { data?: FreelancerRow; error?: string };
@@ -127,15 +131,7 @@ export default function FreelancersPage() {
       const response = await fetch(`/api/freelancers/${row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          freelancer: row.freelancer,
-          skill: row.skill,
-          availability: row.availability,
-          project: row.project,
-          utilization: row.utilization,
-          payout: row.payout,
-          performance: row.performance,
-        }),
+        body: JSON.stringify(Object.fromEntries(columns.map((c) => [c.key, row[c.key]]))),
       });
 
       const json = (await response.json()) as { data?: FreelancerRow; error?: string };
@@ -185,7 +181,7 @@ export default function FreelancersPage() {
   }
 
   return (
-    <DashboardShell title="Freelancers Sheet" subtitle="Editable Excel-style tracker for skills, allocation, utilization, and payouts.">
+    <DashboardShell title="Freelancers Sheet" subtitle="Editable tracker for freelancer contacts, skills, allocation, utilization, and payouts.">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{message}</p>
         <button type="button" onClick={addRow} className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
@@ -197,40 +193,20 @@ export default function FreelancersPage() {
         <table className="min-w-full border-collapse text-sm">
           <thead className="bg-slate-100 text-slate-700">
             <tr>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Freelancer</th>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Primary Skill</th>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Availability</th>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Current Project</th>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Utilization</th>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Monthly Payout (Rs)</th>
-              <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Performance</th>
+              {columns.map((c) => (
+                <th key={c.key} className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left font-semibold">{c.label}</th>
+              ))}
               <th className="border border-slate-200 px-3 py-2 text-left font-semibold">Action</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} className="odd:bg-white even:bg-slate-50">
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.freelancer} onChange={(event) => updateRow(row.id, "freelancer", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.skill} onChange={(event) => updateRow(row.id, "skill", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.availability} onChange={(event) => updateRow(row.id, "availability", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.project} onChange={(event) => updateRow(row.id, "project", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.utilization} onChange={(event) => updateRow(row.id, "utilization", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.payout} onChange={(event) => updateRow(row.id, "payout", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
-                <td className="border border-slate-200 px-2 py-1">
-                  <input value={row.performance} onChange={(event) => updateRow(row.id, "performance", event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full rounded px-2 py-1" />
-                </td>
+                {columns.map((c) => (
+                  <td key={c.key} className="border border-slate-200 px-2 py-1">
+                    <input value={row[c.key]} onChange={(event) => updateRow(row.id, c.key, event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full min-w-32 rounded px-2 py-1" />
+                  </td>
+                ))}
                 <td className="border border-slate-200 px-2 py-1">
                   <button type="button" onClick={() => removeRow(row.id)} className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700">
                     Delete

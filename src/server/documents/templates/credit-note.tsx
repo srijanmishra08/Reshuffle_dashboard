@@ -8,7 +8,8 @@ export function CreditNoteDocument({ data }: { data: CreditNoteData }) {
   return (
     <Document title={`Credit note ${data.number}`}>
       <Page size="A4" style={styles.page}>
-        <Letterhead seller={data.seller} title="CREDIT NOTE" number={data.number} date={data.issueDate} />
+        <Letterhead title="CREDIT NOTE" number={data.number} date={data.issueDate} />
+        <View style={styles.body}>
         <View style={[styles.row, styles.section, { gap: 10 }]}>
           <PartyBlock heading="Issued to" buyer={data.buyer} />
           <View style={[styles.box, { flex: 1 }]}>
@@ -24,6 +25,7 @@ export function CreditNoteDocument({ data }: { data: CreditNoteData }) {
         <TaxSummary tax={data} total={data.amountPaise} />
         <AmountInWords paise={data.amountPaise} />
         <SignatureBlock seller={data.seller} />
+        </View>
       </Page>
     </Document>
   );

@@ -56,6 +56,7 @@ export type InvoiceDetail = {
   notes: string | null;
   terms: string | null;
   isIssued: boolean;
+  hasOriginalPdf?: boolean;
   overdueAt: string | null;
   items: InvoiceItem[];
   payments: { id: string; amountPaise: number; paidAt: string; method: string; reference: string | null }[];

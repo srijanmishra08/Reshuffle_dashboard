@@ -4,58 +4,62 @@ import { getDb, schema, type Db } from "@/server/db/client";
 
 const { legacyFreelancers } = schema;
 
-export type FreelancerRow = {
-  id: string;
-  freelancer: string;
-  skill: string;
-  availability: string;
-  project: string;
-  utilization: string;
-  payout: string;
-  performance: string;
-};
+/** Every editable text field. "project" is the current engagement; "company" is where the freelancer works. */
+export const freelancerFields = [
+  "freelancer",
+  "skill",
+  "category",
+  "company",
+  "email",
+  "phone",
+  "whatsapp",
+  "instagram",
+  "linkedin",
+  "xHandle",
+  "website",
+  "availability",
+  "project",
+  "utilization",
+  "payout",
+  "performance",
+] as const;
 
-type CreateFreelancerInput = Omit<FreelancerRow, "id">;
-type UpdateFreelancerInput = Partial<CreateFreelancerInput>;
+export type FreelancerField = (typeof freelancerFields)[number];
+export type FreelancerRow = { id: string } & Record<FreelancerField, string>;
+
+type CreateFreelancerInput = Pick<FreelancerRow, "freelancer"> & Partial<Record<FreelancerField, string>>;
+type UpdateFreelancerInput = Partial<Record<FreelancerField, string>>;
 
 const columns = {
   id: legacyFreelancers.id,
-  freelancer: legacyFreelancers.freelancer,
-  skill: legacyFreelancers.skill,
-  availability: legacyFreelancers.availability,
-  project: legacyFreelancers.project,
-  utilization: legacyFreelancers.utilization,
-  payout: legacyFreelancers.payout,
-  performance: legacyFreelancers.performance,
-};
+  ...Object.fromEntries(freelancerFields.map((f) => [f, legacyFreelancers[f]])),
+} as { id: typeof legacyFreelancers.id } & { [K in FreelancerField]: (typeof legacyFreelancers)[K] };
 
-type Selected = { [K in keyof typeof columns]: string | null };
+type Selected = { id: string | null } & { [K in FreelancerField]: string | null };
 
 function toRow(row: Selected): FreelancerRow | null {
   if (!row.id || !row.freelancer) {
     return null;
   }
 
-  return {
-    id: row.id,
-    freelancer: row.freelancer,
-    skill: row.skill ?? "",
-    availability: row.availability ?? "",
-    project: row.project ?? "",
-    utilization: row.utilization ?? "",
-    payout: row.payout ?? "",
-    performance: row.performance ?? "",
-  };
+  const out = { id: row.id } as FreelancerRow;
+  for (const f of freelancerFields) {
+    out[f] = row[f] ?? "";
+  }
+  return out;
 }
 
 /** No demo rows are inserted any more; an empty table lists as empty. */
 export async function listFreelancers(db: Db = getDb()) {
   const rows = await db.select(columns).from(legacyFreelancers).orderBy(asc(legacyFreelancers.createdAt));
-  return rows.map(toRow).filter((row): row is FreelancerRow => row !== null);
+  return rows.map((r) => toRow(r as Selected)).filter((row): row is FreelancerRow => row !== null);
 }
 
 export async function createFreelancer(input: CreateFreelancerInput, db: Db = getDb()) {
-  const next: FreelancerRow = { id: `fr-${newId()}`, ...input };
+  const next = { id: `fr-${newId()}` } as FreelancerRow;
+  for (const f of freelancerFields) {
+    next[f] = input[f] ?? "";
+  }
   const now = new Date();
 
   await db.insert(legacyFreelancers).values({ ...next, createdAt: now, updatedAt: now });
@@ -64,22 +68,16 @@ export async function createFreelancer(input: CreateFreelancerInput, db: Db = ge
 
 export async function updateFreelancer(id: string, input: UpdateFreelancerInput, db: Db = getDb()) {
   const rows = await db.select(columns).from(legacyFreelancers).where(eq(legacyFreelancers.id, id)).limit(1);
-  const existing = rows[0] ? toRow(rows[0]) : null;
+  const existing = rows[0] ? toRow(rows[0] as Selected) : null;
 
   if (!existing) {
     return null;
   }
 
-  const next: FreelancerRow = {
-    id,
-    freelancer: input.freelancer ?? existing.freelancer,
-    skill: input.skill ?? existing.skill,
-    availability: input.availability ?? existing.availability,
-    project: input.project ?? existing.project,
-    utilization: input.utilization ?? existing.utilization,
-    payout: input.payout ?? existing.payout,
-    performance: input.performance ?? existing.performance,
-  };
+  const next = { id } as FreelancerRow;
+  for (const f of freelancerFields) {
+    next[f] = input[f] ?? existing[f];
+  }
 
   await db
     .update(legacyFreelancers)

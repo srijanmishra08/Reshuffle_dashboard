@@ -9,6 +9,7 @@ import {
   sendScopeSchema,
 } from "@/lib/schemas/scopes";
 import { newId } from "@/lib/ids";
+import { sellerSnapshot } from "@/server/documents/seller";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { nextNumber } from "@/server/services/numbering";
@@ -376,7 +377,7 @@ export async function sendScope(db: Db, ctx: ServiceContext, id: string, raw: un
       number: allocated.number,
       version: existing.version,
       sentOn: todayIst(now),
-      seller: { legalName: org.legalName, address: org.address, stateCode: org.stateCode, gstin: org.gstin },
+      seller: sellerSnapshot(org),
       title: existing.title,
       problemStatement: existing.problemStatement,
       engagementModel: existing.engagementModel,

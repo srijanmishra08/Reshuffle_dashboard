@@ -13,6 +13,9 @@ type Settings = {
   defaultTerms: string;
   signatoryName: string;
   signatoryTitle: string;
+  phone: string;
+  email: string;
+  website: string;
   fyStartMonth: number;
 };
 
@@ -85,6 +88,9 @@ export function SettingsForm() {
             {field("IFSC", <input className={inputClass} value={form.bankDetails.ifsc} onChange={(e) => setBank("ifsc", e.target.value)} />)}
             {field("Signatory name", <input className={inputClass} value={form.signatoryName} onChange={(e) => set("signatoryName", e.target.value)} />)}
             {field("Signatory title", <input className={inputClass} value={form.signatoryTitle} onChange={(e) => set("signatoryTitle", e.target.value)} />)}
+            {field("Contact phone", <input className={inputClass} value={form.phone} onChange={(e) => set("phone", e.target.value)} />)}
+            {field("Contact email", <input className={inputClass} value={form.email} onChange={(e) => set("email", e.target.value)} />)}
+            {field("Website", <input className={inputClass} value={form.website} onChange={(e) => set("website", e.target.value)} />)}
             {field(
               "Financial year starts in month (1-12)",
               <input className={inputClass} type="number" min={1} max={12} value={form.fyStartMonth} onChange={(e) => set("fyStartMonth", Number(e.target.value))} />

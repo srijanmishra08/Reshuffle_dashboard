@@ -158,6 +158,9 @@ export function InvoiceEditor({ invoiceId }: { invoiceId?: string }) {
             {invoice.isIssued ? (
               <a className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm" href={`/api/invoices/${invoice.id}/pdf`}>Download PDF</a>
             ) : null}
+            {invoice.hasOriginalPdf ? (
+              <a className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm" href={`/api/invoices/${invoice.id}/original`}>Original PDF</a>
+            ) : null}
           </div>
         ) : null}
       </div>

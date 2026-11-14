@@ -8,6 +8,7 @@ import {
   letterPatchSchema,
 } from "@/lib/schemas/letters";
 import { newId } from "@/lib/ids";
+import { sellerSnapshot } from "@/server/documents/seller";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { nextNumber } from "@/server/services/numbering";
@@ -189,7 +190,7 @@ export async function issueLetter(db: Db, ctx: ServiceContext, id: string, raw: 
       number: allocated.number,
       fy: allocated.fy,
       issueDate,
-      seller: { legalName: org.legalName, address: org.address, stateCode: org.stateCode, gstin: org.gstin },
+      seller: sellerSnapshot(org),
       recipientName: existing.recipientName,
       recipientAddress: existing.recipientAddress,
       subject: existing.subject,

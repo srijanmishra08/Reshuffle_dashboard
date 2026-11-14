@@ -15,9 +15,12 @@ export type SnapshotSeller = {
   stateCode: string;
   gstin: string;
   pan?: string;
-  bankDetails?: { accountName?: string; accountNumber?: string; ifsc?: string; bankName?: string };
+  bankDetails?: { accountName?: string; accountNumber?: string; accountType?: string; ifsc?: string; bankName?: string };
   signatoryName?: string;
   signatoryTitle?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
 };
 
 export type SnapshotBuyer = {
@@ -44,6 +47,10 @@ export type InvoiceSnapshot = TaxSnapshot & {
   fy: string;
   issueDate: string;
   dueDate: string;
+  /** Shown under "Payment Terms". Absent means N/A. */
+  paymentTerms?: string | null;
+  /** When set, the totals show "Advance Amount" and "Balance on Completion". */
+  advancePaise?: number;
   seller: SnapshotSeller;
   buyer: SnapshotBuyer;
   placeOfSupply: string;
