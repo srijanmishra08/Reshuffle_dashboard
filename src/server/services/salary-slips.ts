@@ -8,6 +8,7 @@ import {
   salarySlipPatchSchema,
 } from "@/lib/schemas/salary-slips";
 import { newId } from "@/lib/ids";
+import { sellerSnapshot } from "@/server/documents/seller";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { nextNumber } from "@/server/services/numbering";
@@ -227,7 +228,7 @@ export async function issueSalarySlip(db: Db, ctx: ServiceContext, id: string, r
       fy: allocated.fy,
       issueDate: payDate,
       payPeriod: existing.payPeriod,
-      seller: { legalName: org.legalName, address: org.address, stateCode: org.stateCode, gstin: org.gstin },
+      seller: sellerSnapshot(org),
       employee: {
         name: person.name,
         role: person.role,

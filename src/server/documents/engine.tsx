@@ -8,6 +8,7 @@ import { getLetterSnapshot } from "@/server/services/letters";
 import { getSalarySlipSnapshot } from "@/server/services/salary-slips";
 import { getWorkOrderSnapshot } from "@/server/services/work-orders";
 import { registerFonts } from "./fonts";
+import { setSignatureImage } from "./parts";
 import { CreditNoteDocument } from "./templates/credit-note";
 import { InvoiceDocument } from "./templates/invoice";
 import { LetterDocument } from "./templates/letter";
@@ -21,8 +22,32 @@ export type RenderedPdf = { filename: string; buffer: Buffer };
  * Issued documents are immutable snapshots, so a PDF is a pure function of the
  * snapshot and can be re-rendered on demand without storing it.
  */
+let signatureCache: { at: number; buf: Buffer | null } | null = null;
+
+/** Signature PNG from the private "brand-assets" bucket. Missing storage config or file just means no image. */
+async function loadSignature(): Promise<Buffer | null> {
+  if (signatureCache && Date.now() - signatureCache.at < 10 * 60_000) return signatureCache.buf;
+  let buf: Buffer | null = null;
+  const base = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (base && key) {
+    try {
+      const res = await fetch(`${base}/storage/v1/object/brand-assets/signature.png`, {
+        headers: { Authorization: `Bearer ${key}`, apikey: key },
+        cache: "no-store",
+      });
+      if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+    } catch {
+      buf = null;
+    }
+  }
+  signatureCache = { at: Date.now(), buf };
+  return buf;
+}
+
 export async function renderDocument(data: DocumentData): Promise<RenderedPdf> {
   registerFonts();
+  setSignatureImage(await loadSignature());
   switch (data.type) {
     case "INVOICE":
       return { filename: safeName(data.number), buffer: await renderToBuffer(<InvoiceDocument data={data} />) };

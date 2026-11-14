@@ -10,6 +10,7 @@ import {
   workOrderPatchSchema,
 } from "@/lib/schemas/work-orders";
 import { newId } from "@/lib/ids";
+import { sellerSnapshot } from "@/server/documents/seller";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { nextNumber } from "@/server/services/numbering";
@@ -276,7 +277,7 @@ export async function issueWorkOrder(db: Db, ctx: ServiceContext, id: string, ra
       number: allocated.number,
       fy: allocated.fy,
       issueDate,
-      seller: { legalName: org.legalName, address: org.address, stateCode: org.stateCode, gstin: org.gstin },
+      seller: sellerSnapshot(org),
       buyer: {
         name: company.legalName || company.name,
         address: company.address,

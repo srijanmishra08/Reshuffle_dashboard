@@ -148,6 +148,9 @@ export const orgSettings = pgTable("org_settings", {
   signatureBlobKey: text("signature_blob_key"),
   signatoryName: text("signatory_name").notNull().default(""),
   signatoryTitle: text("signatory_title").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  email: text("email").notNull().default(""),
+  website: text("website").notNull().default(""),
   fyStartMonth: integer("fy_start_month").notNull().default(4),
   updatedAt: updated(),
 }).enableRLS();

@@ -25,6 +25,9 @@ export const orgSettingsInputSchema = z.object({
   defaultTerms: z.string().max(5000),
   signatoryName: z.string().trim().max(200),
   signatoryTitle: z.string().trim().max(200),
+  phone: z.string().trim().max(40).default(""),
+  email: z.string().trim().max(200).default(""),
+  website: z.string().trim().max(200).default(""),
   fyStartMonth: z.number().int().min(1).max(12),
 });
 
@@ -69,6 +72,9 @@ export async function getOrgSettings(orgId = "default"): Promise<OrgSettings> {
     defaultTerms: row?.defaultTerms ?? "",
     signatoryName: row?.signatoryName ?? "",
     signatoryTitle: row?.signatoryTitle ?? "",
+    phone: row?.phone ?? "",
+    email: row?.email ?? "",
+    website: row?.website ?? "",
     fyStartMonth: row?.fyStartMonth ?? 4,
     updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : "",
   };
@@ -85,6 +91,9 @@ export async function saveOrgSettings(input: OrgSettingsInput, orgId = "default"
     defaultTerms: input.defaultTerms,
     signatoryName: input.signatoryName,
     signatoryTitle: input.signatoryTitle,
+    phone: input.phone,
+    email: input.email,
+    website: input.website,
     fyStartMonth: input.fyStartMonth,
     updatedAt: new Date(),
   };

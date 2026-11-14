@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { sellerSnapshot } from "@/server/documents/seller";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -17,7 +18,7 @@ import { logActivity } from "@/server/services/activity";
 import { nextNumber } from "@/server/services/numbering";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings, ledgerEntries } = schema;
+const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings, ledgerEntries, attachments } = schema;
 
 const DEFAULT_DUE_DAYS = 15;
 const OPEN_STATUSES = ["ISSUED", "PARTIALLY_PAID"] as const;
@@ -266,17 +267,23 @@ export async function getInvoice(db: Db, ctx: ServiceContext, id: string) {
   const invoice = await findInvoice(db, ctx.orgId, id);
   if (!invoice) return fail("NOT_FOUND", "Invoice not found");
 
-  const [items, paymentRows, creditNoteRows, company] = await Promise.all([
+  const [items, paymentRows, creditNoteRows, company, originals] = await Promise.all([
     fetchItems(db, id),
     db.select().from(payments).where(eq(payments.invoiceId, id)).orderBy(asc(payments.paidAt)),
     db.select().from(creditNotes).where(eq(creditNotes.invoiceId, id)),
     loadCompany(db, ctx.orgId, invoice.companyId),
+    db
+      .select({ id: attachments.id })
+      .from(attachments)
+      .where(and(eq(attachments.entityType, "INVOICE"), eq(attachments.entityId, id), eq(attachments.orgId, ctx.orgId)))
+      .limit(1),
   ]);
 
   const { snapshotJson, ...rest } = invoice;
   return ok({
     ...rest,
     isIssued: snapshotJson !== null,
+    hasOriginalPdf: originals.length > 0,
     outstandingPaise: outstanding(invoice),
     companyName: company?.name ?? "",
     items,
@@ -401,16 +408,7 @@ export async function issueInvoice(db: Db, ctx: ServiceContext, id: string, raw:
       fy: allocated.fy,
       issueDate,
       dueDate,
-      seller: {
-        legalName: org.legalName,
-        address: org.address,
-        stateCode: org.stateCode,
-        gstin: org.gstin,
-        pan: org.pan,
-        bankDetails: org.bankDetails,
-        signatoryName: org.signatoryName,
-        signatoryTitle: org.signatoryTitle,
-      },
+      seller: sellerSnapshot(org),
       buyer: {
         name: company.legalName || company.name,
         address: company.address,
