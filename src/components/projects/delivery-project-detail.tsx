@@ -10,6 +10,7 @@ import {
   type DeliveryProjectDetail,
   type DeliveryStatusValue,
 } from "@/lib/delivery-types";
+import { TaskBoard } from "@/components/projects/task-board";
 
 export function DeliveryProjectDetailView({ id }: { id: string }) {
   const [project, setProject] = useState<DeliveryProjectDetail | null>(null);
@@ -52,7 +53,13 @@ export function DeliveryProjectDetailView({ id }: { id: string }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          <Link href="/projects" className="text-xs text-slate-500 hover:underline">
+            ← All projects
+          </Link>
           <h2 className="text-xl font-semibold text-slate-900">{project.name}</h2>
+          <Link href={`/crm/${project.companyId}`} className="text-sm text-sky-700 hover:underline">
+            Open client
+          </Link>
           <p className="text-sm text-slate-500">
             {project.startDate ?? "No start date"} to {project.dueDate ?? "no due date"}
           </p>
@@ -97,6 +104,12 @@ export function DeliveryProjectDetailView({ id }: { id: string }) {
         Budget not yet invoiced: {formatINR(remaining)}. Invoiced and paid count issued invoices only.
       </p>
 
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase text-slate-500">Task board</h3>
+        <TaskBoard projectId={id} />
+      </section>
+
+      <h3 className="text-sm font-semibold uppercase text-slate-500">Payment milestones</h3>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
@@ -109,6 +122,13 @@ export function DeliveryProjectDetailView({ id }: { id: string }) {
             </tr>
           </thead>
           <tbody>
+            {project.milestones.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-3 py-4 text-slate-500">
+                  No payment milestones. They are created when a won deal with an accepted scope is converted.
+                </td>
+              </tr>
+            ) : null}
             {project.milestones.map((m) => (
               <tr key={m.id} className="border-t border-slate-100">
                 <td className="px-3 py-2">

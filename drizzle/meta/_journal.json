@@ -134,6 +134,13 @@
       "when": 1794828412160,
       "tag": "0018_warm_the_call",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794829111863,
+      "tag": "0019_greedy_goblin_queen",
+      "breakpoints": true
     }
   ]
 }
