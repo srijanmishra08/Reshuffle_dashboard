@@ -256,6 +256,11 @@ export function ScopeEditor({ dealId, scopeId }: { dealId: string; scopeId: stri
               </button>
             </>
           ) : null}
+          {scope.status !== "DRAFT" ? (
+            <a href={`/api/scopes/${scopeId}/pdf`} className="rounded-xl border border-slate-300 px-3 py-1.5 text-sm font-medium">
+              Download PDF
+            </a>
+          ) : null}
           {scope.status === "SENT" ? (
             <>
               <button onClick={share} disabled={busy !== ""} className="rounded-xl bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">

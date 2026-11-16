@@ -1,22 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  Briefcase,
-  CalendarDays,
-  Contact,
-  Handshake,
-  ClipboardList,
-  Code2,
-  FileText,
-  Target,
-  Mail,
-  FileSpreadsheet,
-  LayoutDashboard,
-  Megaphone,
-  Receipt,
-  Settings,
-  Users,
-  UserSquare2,
-} from "lucide-react";
+import { Briefcase, CalendarDays, ClipboardList, Code2, Contact, FileSpreadsheet, FileText, Handshake, LayoutDashboard, Mail, Megaphone, Receipt, Settings, Target, UserSquare2, Users } from "lucide-react";
 
 export type ModuleNavItem = {
   title: string;
@@ -109,6 +92,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/events",
     description: "Workshops, sprints and meetups with team and registrations.",
     icon: CalendarDays,
+  },
+  {
+    title: "Questionnaires",
+    href: "/questionnaires",
+    description: "Client onboarding forms and answers.",
+    icon: ClipboardList,
   },
   {
     title: "Goals",

@@ -13,6 +13,7 @@ import { CreditNoteDocument } from "./templates/credit-note";
 import { InvoiceDocument } from "./templates/invoice";
 import { LetterDocument } from "./templates/letter";
 import { SalarySlipDocument } from "./templates/salary-slip";
+import { ScopeDocument, type ScopePdfData } from "./templates/scope";
 import { WorkOrderDocument } from "./templates/work-order";
 import type { CreditNoteData, DocumentData, InvoiceSnapshot, LetterSnapshot, SalarySlipSnapshot, WorkOrderSnapshot } from "./types";
 
@@ -124,4 +125,21 @@ export async function renderCreditNotePdf(db: Db, ctx: ServiceContext, invoiceId
     roundOffPaise: inv.roundOffPaise,
   };
   return ok(await renderDocument(data));
+}
+
+/** A sent scope prints from its frozen snapshot. The client name is read live, because the snapshot does not hold it. */
+export async function renderScopePdf(db: Db, ctx: ServiceContext, id: string): Promise<Result<RenderedPdf>> {
+  const rows = await db
+    .select({ snapshot: schema.scopes.snapshotJson, clientName: schema.companies.name })
+    .from(schema.scopes)
+    .leftJoin(schema.deals, eq(schema.deals.id, schema.scopes.dealId))
+    .leftJoin(schema.companies, eq(schema.companies.id, schema.deals.companyId))
+    .where(and(eq(schema.scopes.id, id), eq(schema.scopes.orgId, ctx.orgId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return fail("NOT_FOUND", "Scope not found");
+  if (!row.snapshot) return fail("CONFLICT", "Send the scope before downloading its PDF");
+  const data = { ...(row.snapshot as unknown as Omit<ScopePdfData, "clientName">), clientName: row.clientName ?? null };
+  registerFonts();
+  return ok({ filename: safeName(data.number), buffer: await renderToBuffer(<ScopeDocument data={data} />) });
 }
