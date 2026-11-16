@@ -33,7 +33,7 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 | Generic kanban boards | Works | `PipelineBoard` now polls every 20 s instead of SSE. Still backed by `pipeline_items` for social, projects, outreach, app-dev, events, etc. |
 | Pipeline transitions + activity log | Works | `src/server/services/pipeline.ts`, `activity.ts` (activity now uses Drizzle) |
 | Social, freelancers, projects, tasks, pipeline items | Work, legacy tables | Now Drizzle-backed services (`src/server/services/{social,freelancers,projects,tasks,pipeline-items}.ts`). Demo cards and demo freelancers are no longer seeded. Replaced by real domain tables in Phases 5 and 7. |
-| Overview KPIs + feed | **Fake** | Marked "Sample data". Real KPIs in Phase 8. |
+| Overview KPIs + feed | **Real** | `services/overview.ts`: pipeline, wins, receivables, cash, projects, follow-ups, meetings, activity. Activity log is not org-scoped yet. |
 | Finance page | **Not persisted** | Phase 6 |
 | Events page | Fixed | Now shows the `events` pipeline board |
 | Removed | Gone | Prisma, tRPC, BullMQ worker, in-memory SSE realtime, automation trigger route, `/api/clients` |
@@ -171,6 +171,7 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 | Date | Who | What |
 |---|---|---|
+| 2026-11-16 | Claude with Srijan | Branch `feat/sales-workspace-overview`: deal page `/sales/[id]` (details, 8-level diagnosis form from `src/lib/diagnosis-questions.ts`, scope versions, convert to project), Scope Maker `/sales/[id]/scopes/[scopeId]` (module library picker, phases, payment schedule, live preview, send, share link, revise), `/settings/modules`, real Overview (`services/overview.ts`, `/api/overview`; `module-data.ts` deleted), and marketing + events brought in from PRs #47 and #49 with one fresh migration `0016_burly_lady_deathstrike` (replaces their `0014`/`0016`, so close those PRs). **Needs `npm run db:migrate` on production before merge.** 607 tests pass. Not checked in a browser (needs Google sign-in). Development moved to `~/dev/Reshuffle_dashboard`: the iCloud copy had its `node_modules` and git objects evicted, so every tool stalled. Still to build: payouts and assignments, freelancer detail and `/me`, persisted `finance_plans`, global search, notifications, scope PDF template, offer-letter template, Notion import parts 2-6, then the client / agency / freelancer logins. |
 | 2026-11-12 | Claude with Srijan | Audited both repos and the Notion workspace. Wrote `plan.md`, `development-plan.md` and `handoff.md`. |
 | 2026-11-12 | Claude with Srijan | Built Phase 0 (auth, Drizzle, dead-layer removal, money/GST/numbering, Vitest, CI, Settings) and Phase 1 (CRM schema, services, APIs, UI, Notion import for clients, products, meetings). Merged straight to `main` as asked. |
 | 2026-11-12 | Claude with Srijan | Ported all raw SQL to Drizzle services, removed demo seeding, then moved the whole database to Supabase Postgres: new pg schema (timestamptz, jsonb, RLS on every table), postgres-js client on the transaction pooler, PGlite tests (49 pass), baseline + seed migrations applied to Supabase, existing data copied and verified id by id (289 rows, 8 tables), previous database references removed from code and docs. |

@@ -1,10 +1,10 @@
 import { DashboardShell } from "@/components/dashboard-shell";
-import { PipelineBoard } from "@/components/pipeline-board";
+import { EventsWorkspace } from "@/components/events/events-workspace";
 
 export default function EventsPage() {
   return (
     <DashboardShell title="Events" subtitle="Plan, confirm and run workshops, sprints, ideathons and meetups.">
-      <PipelineBoard module="events" />
+      <EventsWorkspace />
     </DashboardShell>
   );
 }

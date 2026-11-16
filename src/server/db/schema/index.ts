@@ -12,3 +12,5 @@ export * from "./delivery";
 export * from "./finance";
 export * from "./docs";
 export * from "./goals";
+export * from "./marketing";
+export * from "./events";
