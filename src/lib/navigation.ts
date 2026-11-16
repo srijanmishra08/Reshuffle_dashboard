@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Briefcase,
+  CalendarDays,
   Contact,
   Handshake,
   ClipboardList,
@@ -96,6 +97,12 @@ export const moduleNav: ModuleNavItem[] = [
     href: "/finance",
     description: "Revenue, expenses, payouts, and cash view.",
     icon: Receipt,
+  },
+  {
+    title: "Events",
+    href: "/events",
+    description: "Workshops, sprints and meetups with team and registrations.",
+    icon: CalendarDays,
   },
   {
     title: "Goals",
