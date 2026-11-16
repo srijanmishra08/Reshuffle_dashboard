@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
@@ -79,6 +80,7 @@ export function DealBoard() {
 
   return (
     <div className="space-y-4">
+      <Link href="/settings/modules" className="text-xs text-slate-500 underline">Manage module library</Link>
       <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
         <label className="text-xs text-slate-500">
           Company
@@ -113,7 +115,7 @@ export function DealBoard() {
               <div className="space-y-2">
                 {cards.map((deal) => (
                   <article key={deal.id} className="rounded-lg border border-slate-200 bg-white p-2 text-sm">
-                    <p className="font-medium text-slate-900">{deal.title}</p>
+                    <Link href={`/sales/${deal.id}`} className="font-medium text-slate-900 hover:underline">{deal.title}</Link>
                     <p className="text-xs text-slate-500">{deal.companyName} · {formatINR(deal.valuePaise)}</p>
                     <select
                       aria-label={`Move ${deal.title}`}
