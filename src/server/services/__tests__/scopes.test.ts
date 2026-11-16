@@ -17,7 +17,9 @@ import {
   updateScope,
 } from "../scopes";
 
+import { renderScopePdf } from "@/server/documents/engine";
 const ctx = { orgId: "default", userId: "user-1" };
+// Rendering is covered here so a scope's frozen snapshot and its PDF template cannot drift apart.
 let db: Db;
 let cleanup: () => void;
 let dealId: string;
@@ -95,6 +97,11 @@ describe("scopes", () => {
     expect(sent.status).toBe("SENT");
     expect(sent.number).toMatch(/^SC\/\d{2}-\d{2}\/\d{3}$/);
     expect(sent.isFrozen).toBe(true);
+
+    const pdf = must(await renderScopePdf(db, ctx, draft.id));
+    expect(pdf.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.filename).toMatch(/^SC-\d{2}-\d{2}-\d{3}\.pdf$/);
+    expect((await renderScopePdf(db, { orgId: "other", userId: "u" }, draft.id)).ok).toBe(false);
 
     const retry = must(await sendScope(db, ctx, draft.id, { idempotencyKey: "send-key-1" }));
     expect(retry.number).toBe(sent.number);
