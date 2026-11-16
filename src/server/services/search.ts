@@ -1,0 +1,198 @@
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import type { Db } from "@/server/db/client";
+import { schema } from "@/server/db/client";
+import { ok } from "@/server/lib/result";
+import type { ServiceContext } from "@/server/services/companies";
+import { listDueFollowUps } from "@/server/services/interactions";
+import { todayIst } from "@/server/services/invoices";
+
+const { companies, contacts, deals, invoices, deliveryProjects, docs, legacyFreelancers, scopes, payouts, projectMilestones } =
+  schema;
+
+export type SearchHit = { type: string; id: string; title: string; subtitle: string; href: string };
+
+const PER_TYPE = 5;
+
+/** Escape LIKE wildcards so a typed % or _ matches itself. */
+export function likePattern(query: string): string {
+  return `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/** Case-insensitive substring search across the main records. Empty or one-character queries return nothing. */
+export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknown, opts: { includeBilling?: boolean } = {}) {
+  const query = typeof rawQuery === "string" ? rawQuery.trim().slice(0, 100) : "";
+  if (query.length < 2) return ok([] as SearchHit[]);
+  const p = likePattern(query);
+
+  const [companyRows, contactRows, dealRows, invoiceRows, projectRows, docRows, freelancerRows] = await Promise.all([
+    db
+      .select({ id: companies.id, name: companies.name, lifecycle: companies.lifecycle })
+      .from(companies)
+      .where(and(eq(companies.orgId, ctx.orgId), isNull(companies.archivedAt), ilike(companies.name, p)))
+      .limit(PER_TYPE),
+    db
+      .select({ id: contacts.id, name: contacts.name, companyId: contacts.companyId, companyName: companies.name })
+      .from(contacts)
+      .innerJoin(companies, eq(companies.id, contacts.companyId))
+      .where(
+        and(
+          eq(contacts.orgId, ctx.orgId),
+          isNull(contacts.archivedAt),
+          or(ilike(contacts.name, p), ilike(contacts.email, p), ilike(contacts.phone, p))
+        )
+      )
+      .limit(PER_TYPE),
+    db
+      .select({ id: deals.id, title: deals.title, stage: deals.stage, companyName: companies.name })
+      .from(deals)
+      .innerJoin(companies, eq(companies.id, deals.companyId))
+      .where(and(eq(deals.orgId, ctx.orgId), or(ilike(deals.title, p), ilike(companies.name, p))))
+      .limit(PER_TYPE),
+    opts.includeBilling
+      ? db
+          .select({ id: invoices.id, number: invoices.number, status: invoices.status, companyName: companies.name })
+          .from(invoices)
+          .innerJoin(companies, eq(companies.id, invoices.companyId))
+          .where(and(eq(invoices.orgId, ctx.orgId), or(ilike(invoices.number, p), ilike(companies.name, p))))
+          .orderBy(desc(invoices.createdAt))
+          .limit(PER_TYPE)
+      : Promise.resolve([]),
+    db
+      .select({ id: deliveryProjects.id, name: deliveryProjects.name, status: deliveryProjects.status })
+      .from(deliveryProjects)
+      .where(and(eq(deliveryProjects.orgId, ctx.orgId), ilike(deliveryProjects.name, p)))
+      .limit(PER_TYPE),
+    db
+      .select({ id: docs.id, title: docs.title, type: docs.type })
+      .from(docs)
+      .where(and(eq(docs.orgId, ctx.orgId), ilike(docs.title, p)))
+      .limit(PER_TYPE),
+    db
+      .select({ id: legacyFreelancers.id, name: legacyFreelancers.freelancer, skill: legacyFreelancers.skill })
+      .from(legacyFreelancers)
+      .where(or(ilike(legacyFreelancers.freelancer, p), ilike(legacyFreelancers.skill, p)))
+      .limit(PER_TYPE),
+  ]);
+
+  const hits: SearchHit[] = [
+    ...companyRows.map((r) => ({ type: "Client", id: r.id, title: r.name, subtitle: r.lifecycle, href: `/crm/${r.id}` })),
+    ...contactRows.map((r) => ({ type: "Contact", id: r.id, title: r.name, subtitle: r.companyName, href: `/crm/${r.companyId}` })),
+    ...dealRows.map((r) => ({ type: "Deal", id: r.id, title: r.title, subtitle: `${r.companyName} · ${r.stage}`, href: `/sales/${r.id}` })),
+    ...invoiceRows.map((r) => ({
+      type: "Invoice",
+      id: r.id,
+      title: r.number ?? "Draft invoice",
+      subtitle: `${r.companyName} · ${r.status}`,
+      href: `/invoices/${r.id}`,
+    })),
+    ...projectRows.map((r) => ({ type: "Project", id: r.id, title: r.name, subtitle: r.status, href: `/projects/${r.id}` })),
+    ...docRows.map((r) => ({ type: "Doc", id: r.id, title: r.title, subtitle: r.type, href: "/docs" })),
+    ...freelancerRows.map((r) => ({
+      type: "Freelancer",
+      id: r.id,
+      title: r.name,
+      subtitle: r.skill ?? "",
+      href: `/freelancers/${r.id}`,
+    })),
+  ];
+  return ok(hits);
+}
+
+export type Notice = { id: string; kind: string; title: string; detail: string; href: string; tone: "warn" | "info" | "good" };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * What needs attention today, computed from live records instead of a stored inbox:
+ * overdue invoices, follow-ups due, scopes accepted in the last week, late milestones and payouts due.
+ * Money items are left out for members.
+ */
+export async function listNotices(db: Db, ctx: ServiceContext, opts: { includeBilling?: boolean } = {}, now = new Date()) {
+  const today = todayIst(now);
+  const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
+
+  const [overdue, followUps, accepted, lateMilestones, duePayouts] = await Promise.all([
+    opts.includeBilling
+      ? db
+          .select({ id: invoices.id, number: invoices.number, dueDate: invoices.dueDate, companyName: companies.name })
+          .from(invoices)
+          .innerJoin(companies, eq(companies.id, invoices.companyId))
+          .where(
+            and(eq(invoices.orgId, ctx.orgId), isNotNull(invoices.overdueAt), inArray(invoices.status, ["ISSUED", "PARTIALLY_PAID", "OVERDUE"]))
+          )
+          .limit(20)
+      : Promise.resolve([]),
+    listDueFollowUps(db, ctx),
+    db
+      .select({ id: scopes.id, dealId: scopes.dealId, title: scopes.title, acceptedBy: scopes.acceptedBy, acceptedAt: scopes.acceptedAt })
+      .from(scopes)
+      .where(and(eq(scopes.orgId, ctx.orgId), eq(scopes.status, "ACCEPTED"), gte(scopes.acceptedAt, weekAgo)))
+      .limit(20),
+    db
+      .select({ id: projectMilestones.id, label: projectMilestones.label, dueDate: projectMilestones.dueDate, projectId: deliveryProjects.id, projectName: deliveryProjects.name })
+      .from(projectMilestones)
+      .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectMilestones.projectId))
+      .where(
+        and(
+          eq(deliveryProjects.orgId, ctx.orgId),
+          inArray(deliveryProjects.status, ["PLANNED", "ACTIVE"]),
+          eq(projectMilestones.status, "PENDING"),
+          isNotNull(projectMilestones.dueDate),
+          lte(projectMilestones.dueDate, today)
+        )
+      )
+      .limit(20),
+    opts.includeBilling
+      ? db
+          .select({ id: payouts.id, freelancerId: payouts.freelancerId, name: legacyFreelancers.freelancer, dueDate: payouts.dueDate })
+          .from(payouts)
+          .innerJoin(legacyFreelancers, eq(legacyFreelancers.id, payouts.freelancerId))
+          .where(and(eq(payouts.orgId, ctx.orgId), eq(payouts.status, "PENDING"), isNotNull(payouts.dueDate), lte(payouts.dueDate, today)))
+          .limit(20)
+      : Promise.resolve([]),
+  ]);
+
+  const notices: Notice[] = [
+    ...overdue.map((i) => ({
+      id: `inv-${i.id}`,
+      kind: "Invoice overdue",
+      title: `${i.number ?? "Invoice"} · ${i.companyName}`,
+      detail: i.dueDate ? `Due ${i.dueDate}` : "",
+      href: `/invoices/${i.id}`,
+      tone: "warn" as const,
+    })),
+    ...duePayouts.map((p) => ({
+      id: `pay-${p.id}`,
+      kind: "Payout due",
+      title: p.name,
+      detail: p.dueDate ? `Due ${p.dueDate}` : "",
+      href: `/freelancers/${p.freelancerId}`,
+      tone: "warn" as const,
+    })),
+    ...lateMilestones.map((m) => ({
+      id: `ms-${m.id}`,
+      kind: "Milestone due",
+      title: `${m.projectName}: ${m.label}`,
+      detail: m.dueDate ? `Due ${m.dueDate}` : "",
+      href: `/projects/${m.projectId}`,
+      tone: "warn" as const,
+    })),
+    ...(followUps.ok ? followUps.data : []).map((f) => ({
+      id: `fu-${f.id}`,
+      kind: "Follow-up",
+      title: f.companyName,
+      detail: f.nextAction ?? "",
+      href: `/crm/${f.companyId}`,
+      tone: "info" as const,
+    })),
+    ...accepted.map((s) => ({
+      id: `sc-${s.id}`,
+      kind: "Scope accepted",
+      title: s.title,
+      detail: s.acceptedBy ? `By ${s.acceptedBy}` : "",
+      href: `/sales/${s.dealId}`,
+      tone: "good" as const,
+    })),
+  ];
+  return ok(notices);
+}

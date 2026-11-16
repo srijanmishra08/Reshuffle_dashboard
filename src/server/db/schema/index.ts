@@ -14,3 +14,4 @@ export * from "./docs";
 export * from "./goals";
 export * from "./marketing";
 export * from "./events";
+export * from "./team";

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { moduleNav } from "@/lib/navigation";
 import { cn } from "@/components/ui/helpers";
 import { SignOutButton } from "@/components/sign-out-button";
+import { CommandBar } from "@/components/command-bar";
 
 type DashboardShellProps = {
   title: string;
@@ -58,6 +59,7 @@ export function DashboardShell({ title, subtitle, children }: DashboardShellProp
         </aside>
 
         <main className="mt-12 flex-1 rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-6 md:mt-0">
+          <CommandBar />
           <header className="mb-6 border-b border-slate-200/80 pb-4">
             <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h2>
             <p className="mt-1 text-sm text-slate-600 sm:text-base">{subtitle}</p>

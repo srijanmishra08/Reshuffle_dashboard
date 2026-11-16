@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api, jsonBody } from "@/lib/api";
 
 type RevenueRow = {
   id: string;
@@ -51,6 +52,8 @@ const startingExpensesInitial: ExpenseRow[] = [
   { id: "e-7", head: "Website Domain", amount: "4000" },
   { id: "e-8", head: "Gifts", amount: "20000" },
 ];
+
+type SavedPlan = { quarter1: RevenueRow[]; quarter2: RevenueRow[]; quarter3: RevenueRow[]; expenses: ExpenseRow[] };
 
 function sumRows(rows: RevenueRow[], key: "projection" | "fixedAmount") {
   return rows.reduce((total, row) => total + Number(row[key] || 0), 0);
@@ -143,6 +146,45 @@ export function PlanTab() {
   const [quarter2Rows, setQuarter2Rows] = useState<RevenueRow[]>(quarter2Initial);
   const [quarter3Rows, setQuarter3Rows] = useState<RevenueRow[]>(quarter3Initial);
   const [expenseRows, setExpenseRows] = useState<ExpenseRow[]>(startingExpensesInitial);
+  const [status, setStatus] = useState("Loading saved plan...");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const timer = setTimeout(() => {
+      api<{ data: Partial<SavedPlan>; updatedAt: string } | null>("/api/finance/plans/projections")
+        .then((saved) => {
+          if (!alive) return;
+          if (!saved) {
+            setStatus("Showing starter figures. Nothing saved yet.");
+            return;
+          }
+          if (Array.isArray(saved.data.quarter1)) setQuarter1Rows(saved.data.quarter1);
+          if (Array.isArray(saved.data.quarter2)) setQuarter2Rows(saved.data.quarter2);
+          if (Array.isArray(saved.data.quarter3)) setQuarter3Rows(saved.data.quarter3);
+          if (Array.isArray(saved.data.expenses)) setExpenseRows(saved.data.expenses);
+          setStatus(`Last saved ${new Date(saved.updatedAt).toLocaleString("en-IN")}`);
+        })
+        .catch((e) => alive && setStatus(e instanceof Error ? `Could not load: ${e.message}` : "Could not load plan"));
+    }, 0);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const data: SavedPlan = { quarter1: quarter1Rows, quarter2: quarter2Rows, quarter3: quarter3Rows, expenses: expenseRows };
+      const saved = await api<{ updatedAt: string }>("/api/finance/plans/projections", { method: "PUT", ...jsonBody({ data }) });
+      setStatus(`Saved ${new Date(saved.updatedAt).toLocaleString("en-IN")}`);
+    } catch (e) {
+      setStatus(e instanceof Error ? `Not saved: ${e.message}` : "Not saved");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function updateExpenseRow(id: string, field: keyof Omit<ExpenseRow, "id">, value: string) {
     setExpenseRows((current) => current.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
@@ -158,7 +200,12 @@ export function PlanTab() {
 
   return (
     <>
-      <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Sample projections. Edits are not saved yet; saving comes with the finance plan table.</p>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+        <p className="text-sm text-slate-600">{status}</p>
+        <button type="button" onClick={save} disabled={saving} className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+          {saving ? "Saving..." : "Save plan"}
+        </button>
+      </div>
       <EditableRevenueTable title="Month 1-3 (Pre-Seed Stage / 1k Users)" rows={quarter1Rows} setRows={setQuarter1Rows} />
       <EditableRevenueTable title="Month 4-6 (After Seed Round / Growth)" rows={quarter2Rows} setRows={setQuarter2Rows} />
       <EditableRevenueTable title="Month 7-12 (Expansion Stage)" rows={quarter3Rows} setRows={setQuarter3Rows} />
