@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 
@@ -207,7 +208,10 @@ export default function FreelancersPage() {
                     <input value={row[c.key]} onChange={(event) => updateRow(row.id, c.key, event.target.value)} onBlur={() => void saveRowById(row.id)} className="w-full min-w-32 rounded px-2 py-1" />
                   </td>
                 ))}
-                <td className="border border-slate-200 px-2 py-1">
+                <td className="whitespace-nowrap border border-slate-200 px-2 py-1">
+                  <Link href={`/freelancers/${row.id}`} className="mr-2 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">
+                    Open
+                  </Link>
                   <button type="button" onClick={() => removeRow(row.id)} className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700">
                     Delete
                   </button>
