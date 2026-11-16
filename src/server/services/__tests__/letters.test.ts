@@ -3,6 +3,8 @@ import { createTestDb } from "@/test/db";
 import { schema, type Db } from "@/server/db/client";
 import { createLetter, deleteDraftLetter, issueLetter, listLetters, updateLetter } from "../letters";
 import { renderLetterPdf } from "@/server/documents/engine";
+import { isSectionHeading, isServiceAgreement } from "@/server/documents/templates/letter";
+import { serviceAgreementText } from "@/lib/letter-templates";
 
 const ctx = { orgId: "default", userId: "user-1" };
 let db: Db;
@@ -72,5 +74,36 @@ describe("letters", () => {
     must(await issueLetter(db, ctx, draft.id, { idempotencyKey: "pdf-key-letter", issueDate: "2026-06-12" }));
     const pdf = must(await renderLetterPdf(db, ctx, draft.id));
     expect(pdf.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it("renders a service agreement, which runs past one page, with headings picked out", async () => {
+    const text = serviceAgreementText({
+      providerName: "Test Studio",
+      clientName: "Fake Recipient",
+      projectTitle: "Sample Build",
+      description: "Design and build a sample system. ".repeat(30),
+      deliverables: Array.from({ length: 25 }, (_, n) => `Deliverable ${n + 1}`).join("\n"),
+      exclusions: "Hosting costs",
+      startDate: "2026-12-01",
+      endDate: "2027-02-01",
+      totalFeeRupees: 250000,
+      gstExtra: true,
+      instalments: [{ label: "Advance", percent: 50 }, { label: "Completion", percent: 50 }],
+      revisionRounds: 2,
+      ip: "full",
+      lateFeePercent: 2,
+      cancellationFeePercent: 10,
+      jurisdiction: "Raipur, Chhattisgarh",
+      extraClauses: "",
+    });
+    expect(isServiceAgreement(text.subject)).toBe(true);
+    expect(isSectionHeading("2. Scope of Work")).toBe(true);
+    expect(isSectionHeading("5.1  Revisions. The Client is entitled to 2 round(s).")).toBe(false);
+
+    const draft = must(await createLetter(db, ctx, { recipientName: "Fake Recipient", ...text }));
+    must(await issueLetter(db, ctx, draft.id, { idempotencyKey: "pdf-key-agreement", issueDate: "2026-12-01" }));
+    const pdf = must(await renderLetterPdf(db, ctx, draft.id));
+    expect(pdf.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+    expect((pdf.buffer.toString("latin1").match(/\/Type\s*\/Page\b/g) ?? []).length).toBeGreaterThan(1);
   });
 });
