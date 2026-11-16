@@ -78,3 +78,34 @@ export const financePlans = pgTable(
   },
   (t) => [uniqueIndex("uq_finance_plans_org_key").on(t.orgId, t.key)]
 ).enableRLS();
+
+export const taskStatusValues = ["BACKLOG", "TODO", "IN_PROGRESS", "CLIENT_REVIEW", "REVISION", "COMPLETED", "INVOICED"] as const;
+export type TaskStatus = (typeof taskStatusValues)[number];
+export const taskPriorityValues = ["NONE", "LOW", "MEDIUM", "HIGH"] as const;
+export type TaskPriority = (typeof taskPriorityValues)[number];
+
+/** Kanban tasks on a delivery project. A project's progress is the share of tasks that are COMPLETED or INVOICED. */
+export const projectTasks = pgTable(
+  "project_tasks",
+  {
+    id: text("id").primaryKey().$defaultFn(newId),
+    orgId: text("org_id").notNull().default("default"),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => deliveryProjects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    status: text("status").notNull().default("TODO"),
+    priority: text("priority").notNull().default("NONE"),
+    /** Calendar day, `YYYY-MM-DD`. */
+    dueDate: text("due_date"),
+    budgetPaise: integer("budget_paise").notNull().default(0),
+    assigneeId: text("assignee_id").references(() => legacyFreelancers.id, { onDelete: "set null" }),
+    position: integer("position").notNull().default(0),
+    completedAt: ts("completed_at"),
+    createdBy: text("created_by"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_project_tasks_project").on(t.projectId, t.status, t.position), index("idx_project_tasks_assignee").on(t.assigneeId)]
+).enableRLS();

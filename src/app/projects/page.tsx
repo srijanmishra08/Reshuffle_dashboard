@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PipelineBoard } from "@/components/pipeline-board";
-import { DeliveryProjectList } from "@/components/projects/delivery-project-list";
+import { ProjectProgress } from "@/components/projects/project-progress";
 
 export default function ProjectsPage() {
   const [assignees, setAssignees] = useState<string[]>([]);
@@ -34,14 +34,14 @@ export default function ProjectsPage() {
   }, []);
 
   return (
-    <DashboardShell title="Project Management" subtitle="Execution cockpit for milestones, tasks, and owners.">
+    <DashboardShell title="Project Management" subtitle="Progress of every client project. Open one for its task board and milestones.">
       <div className="space-y-8">
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Delivery projects</h2>
-          <DeliveryProjectList />
+          <h2 className="text-sm font-semibold uppercase text-slate-500">All projects and their progress</h2>
+          <ProjectProgress />
         </section>
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Task board (legacy)</h2>
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Old task board (not linked to clients)</h2>
           <PipelineBoard module="projects" assignees={assignees} />
         </section>
       </div>

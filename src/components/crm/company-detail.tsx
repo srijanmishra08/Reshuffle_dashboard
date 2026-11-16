@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, jsonBody } from "@/lib/api";
+import { ProjectProgress } from "@/components/projects/project-progress";
 import {
   formatDate,
   isOverdue,
@@ -98,6 +99,10 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
       {message ? <p className="text-sm text-slate-600">{message}</p> : null}
 
+      <Card title="Projects and progress">
+        <ProjectProgress companyId={companyId} />
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-4">
           <Card title="Log a touch">
@@ -175,7 +180,10 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
           </Card>
 
           <Card title="Deals, documents and invoices">
-            <p className="text-sm text-slate-500">Arrive with the sales pipeline (Phase 3) and billing (Phase 2).</p>
+            <p className="text-sm text-slate-500">
+              See the <Link href="/sales" className="text-sky-700 hover:underline">Sales board</Link> and{" "}
+              <Link href="/invoices" className="text-sky-700 hover:underline">Invoices</Link> for this client.
+            </p>
           </Card>
         </div>
       </div>
