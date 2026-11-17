@@ -152,14 +152,22 @@ export async function ingestDocument(
     return fail("VALIDATION", "The file could not be stored. Try again in a moment.");
   }
 
+  // The PDF is attached to a dashboard invoice only when the number matches AND either the total or the client
+  // matches too. The invoice software starts every new invoice with a real-looking number, so a test PDF must not
+  // end up as the original PDF of a real invoice just because it kept that number.
+  const amountPaise = parseAmountPaise(m.amountText);
   let invoiceId: string | null = null;
   if (m.docType === "INVOICE" && m.number) {
-    const match = await db
-      .select({ id: invoices.id })
+    const candidates = await db
+      .select({ id: invoices.id, totalPaise: invoices.totalPaise, companyName: companies.name })
       .from(invoices)
+      .leftJoin(companies, eq(companies.id, invoices.companyId))
       .where(and(eq(invoices.orgId, key.orgId), sql`lower(${invoices.number}) = lower(${m.number})`))
       .limit(1);
-    invoiceId = match[0]?.id ?? null;
+    const candidate = candidates[0];
+    const sameTotal = candidate && amountPaise !== null && candidate.totalPaise === amountPaise;
+    const sameClient = candidate && m.partyName !== "" && (candidate.companyName ?? "").trim().toLowerCase() === m.partyName.trim().toLowerCase();
+    invoiceId = sameTotal || sameClient ? candidate.id : null;
   }
   const filename = safeFilename(m.filename || m.number, `${m.docType.toLowerCase()}-${hash.slice(0, 8)}`);
   const [row] = await db
@@ -169,7 +177,7 @@ export async function ingestDocument(
       docType: m.docType,
       number: m.number,
       partyName: m.partyName,
-      amountPaise: parseAmountPaise(m.amountText),
+      amountPaise,
       documentDate: parseDocumentDate(m.dateText),
       filename,
       blobKey: `${BUCKET}/${blobPath}`,
