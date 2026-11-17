@@ -8,14 +8,16 @@ type PortalShellProps = {
   subtitle?: string;
   /** True when an admin is previewing this portal with demo data. */
   previewing?: boolean;
+  /** True when the preview shows a real account, which cannot be changed. */
+  readOnlyPreview?: boolean;
   children: React.ReactNode;
 };
 
 /** Frame for the outside portals: a plain top bar and one column, nothing from the team dashboard. */
-export function PortalShell({ area, userName, title, subtitle, previewing, children }: PortalShellProps) {
+export function PortalShell({ area, userName, title, subtitle, previewing, readOnlyPreview, children }: PortalShellProps) {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900">
-      {previewing ? <PreviewBanner area={area} /> : null}
+      {previewing ? <PreviewBanner area={area} readOnly={readOnlyPreview} /> : null}
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">

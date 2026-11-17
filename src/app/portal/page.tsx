@@ -17,7 +17,7 @@ export default async function ClientPortalPage() {
 
   if (!result.ok) {
     return (
-      <PortalShell area="Client portal" userName={user.name} previewing={user.previewing} title="Welcome">
+      <PortalShell area="Client portal" userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly} title="Welcome">
         <Card title="Your account is not set up yet">
           <Empty>{result.error}</Empty>
         </Card>
@@ -30,7 +30,7 @@ export default async function ClientPortalPage() {
   const overdue = home.invoices.filter((i) => i.overdue).length;
 
   return (
-    <PortalShell area="Client portal" userName={user.name} previewing={user.previewing} title={home.company.name} subtitle="Your projects, invoices and anything waiting for you.">
+    <PortalShell area="Client portal" userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly} title={home.company.name} subtitle="Your projects, invoices and anything waiting for you.">
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Active projects" value={String(open.length)} />
         <Stat label="Waiting for you" value={String(home.review.length)} note="Work to approve" tone={home.review.length > 0 ? "warn" : undefined} />
@@ -51,7 +51,7 @@ export default async function ClientPortalPage() {
                   </p>
                   {t.description ? <p className="mt-1 text-sm text-stone-600">{t.description}</p> : null}
                 </div>
-                <ReviewActions taskId={t.id} />
+                <ReviewActions taskId={t.id} readOnly={user.previewReadOnly} />
               </li>
             ))}
           </ul>

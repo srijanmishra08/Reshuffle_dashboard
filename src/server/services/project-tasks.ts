@@ -79,6 +79,7 @@ export async function listTasks(db: Db, ctx: ServiceContext, projectId: string) 
       assigneeName: legacyFreelancers.freelancer,
       position: projectTasks.position,
       completedAt: projectTasks.completedAt,
+      commentCount: sql<number>`(select count(*)::int from task_comments c where c.task_id = ${projectTasks.id})`,
     })
     .from(projectTasks)
     .leftJoin(legacyFreelancers, eq(legacyFreelancers.id, projectTasks.assigneeId))

@@ -11,6 +11,7 @@ const {
   scopes,
   invoices,
   workOrders,
+  letters,
   questionnaires,
   questionnaireResponses,
   allowedEmails,
@@ -37,7 +38,7 @@ export async function getClientHub(db: Db, ctx: ServiceContext, companyId: strin
   )[0];
   if (!company) return fail("NOT_FOUND", "Company not found");
 
-  const [projects, dealRows, scopeRows, invoiceRows, workOrderRows, formRows, accessRows] = await Promise.all([
+  const [projects, dealRows, scopeRows, invoiceRows, workOrderRows, letterRows, formRows, accessRows] = await Promise.all([
     listProjectProgress(db, ctx, { companyId }),
     db
       .select({ id: deals.id, title: deals.title, stage: deals.stage, valuePaise: deals.valuePaise, expectedClose: deals.expectedClose })
@@ -73,6 +74,13 @@ export async function getClientHub(db: Db, ctx: ServiceContext, companyId: strin
           .where(and(eq(workOrders.companyId, companyId), eq(workOrders.orgId, ctx.orgId)))
           .orderBy(desc(workOrders.createdAt))
       : Promise.resolve([]),
+    opts.includeMoney
+      ? db
+          .select({ id: letters.id, number: letters.number, subject: letters.subject, status: letters.status, issueDate: letters.issueDate })
+          .from(letters)
+          .where(and(eq(letters.companyId, companyId), eq(letters.orgId, ctx.orgId)))
+          .orderBy(desc(letters.createdAt))
+      : Promise.resolve([]),
     db
       .select({ id: questionnaires.id, title: questionnaires.title, status: questionnaires.status, responses: sql<number>`count(${questionnaireResponses.id})` })
       .from(questionnaires)
@@ -98,6 +106,7 @@ export async function getClientHub(db: Db, ctx: ServiceContext, companyId: strin
     scopes: scopeRows,
     invoices: invoiceRows,
     workOrders: workOrderRows,
+    letters: letterRows,
     forms: formRows.map((f) => ({ ...f, responses: Number(f.responses) })),
     access: accessRows.map((a) => ({ email: a.email, hasSignedIn: a.signedInAs !== null })),
     moneyHidden: !opts.includeMoney,

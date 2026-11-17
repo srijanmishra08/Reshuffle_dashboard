@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
+import { StaffTaskComments } from "@/components/projects/staff-task-comments";
 import { formatINR } from "@/server/lib/money";
 import {
   type TaskPriorityName,
@@ -22,6 +23,7 @@ type Task = {
   budgetPaise: number;
   assigneeId: string | null;
   assigneeName: string | null;
+  commentCount: number;
 };
 type Freelancer = { id: string; freelancer: string };
 type Draft = { id: string | null; title: string; description: string; status: TaskStatusName; priority: TaskPriorityName; dueDate: string; rupees: string; assigneeId: string };
@@ -229,6 +231,7 @@ export function TaskBoard({ projectId, onChange }: { projectId: string; onChange
               ))}
             </select>
           </label>
+          {draft.id ? <StaffTaskComments taskId={draft.id} onChange={() => void load()} /> : null}
           <div className="flex flex-wrap gap-2 md:col-span-4">
             <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
               {draft.id ? "Save task" : "Add task"}
@@ -293,6 +296,7 @@ export function TaskBoard({ projectId, onChange }: { projectId: string; onChange
                         {t.budgetPaise ? <span className="text-slate-600">{formatINR(t.budgetPaise)}</span> : null}
                         {t.dueDate ? <span className={late ? "font-medium text-rose-600" : "text-slate-500"}>{late ? "Overdue " : "Due "}{t.dueDate}</span> : null}
                         {t.assigneeName ? <span className="text-slate-500">· {t.assigneeName}</span> : null}
+                        {t.commentCount > 0 ? <span className={t.status === "REVISION" ? "font-medium text-orange-700" : "text-slate-500"}>· {t.commentCount} comment{t.commentCount === 1 ? "" : "s"}</span> : null}
                       </span>
                     </button>
                   );

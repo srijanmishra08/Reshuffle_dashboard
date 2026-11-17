@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createTestDb } from "@/test/db";
 import { schema, type Db } from "@/server/db/client";
 import type { AuthedUser } from "@/server/session-user";
-import { DEMO_IDS, DEMO_ORG, isPreviewRole, previewUser } from "@/server/preview";
+import { DEMO_IDS, DEMO_ORG, formatPreviewChoice, isPreviewRole, parsePreviewChoice, previewUser } from "@/server/preview";
 import { createCompany, listCompanies } from "../companies";
 import { demoStatus, removeDemo, seedDemo } from "../demo";
 import { getClientHub } from "../hub";
@@ -40,6 +40,26 @@ describe("preview user", () => {
     expect(previewUser(admin, "CLIENT").id).toBe(admin.id);
     expect(isPreviewRole("CLIENT") && isPreviewRole("FREELANCER") && isPreviewRole("AGENCY")).toBe(true);
     expect(isPreviewRole("ADMIN") || isPreviewRole("MANAGER") || isPreviewRole(undefined)).toBe(false);
+  });
+});
+
+describe("preview of a real record", () => {
+  it("reads and writes the cookie value", () => {
+    expect(parsePreviewChoice("CLIENT")).toEqual({ role: "CLIENT", recordId: null });
+    expect(parsePreviewChoice("CLIENT:abc123")).toEqual({ role: "CLIENT", recordId: "abc123" });
+    expect(parsePreviewChoice("AGENCY:a:b")).toEqual({ role: "AGENCY", recordId: "a:b" });
+    for (const bad of ["ADMIN", "ADMIN:x", "CLIENT:", "client", "", undefined, null, 5, `CLIENT:${"x".repeat(101)}`]) expect(parsePreviewChoice(bad), String(bad)).toBeNull();
+    expect(formatPreviewChoice({ role: "CLIENT", recordId: null })).toBe("CLIENT");
+    expect(formatPreviewChoice({ role: "FREELANCER", recordId: "f1" })).toBe("FREELANCER:f1");
+  });
+
+  it("acts as the real record in the real organisation, read-only", () => {
+    const u = previewUser(admin, { role: "CLIENT", recordId: "real-company" });
+    expect(u).toMatchObject({ role: "CLIENT", orgId: "default", previewing: true, previewReadOnly: true, links: { companyId: "real-company", freelancerId: null, agencyId: null } });
+    expect(previewUser(admin, { role: "AGENCY", recordId: "ag" }).links.agencyId).toBe("ag");
+    // The demo preview stays writable and in its own organisation.
+    expect(previewUser(admin, "CLIENT").orgId).toBe(DEMO_ORG);
+    expect(previewUser(admin, "CLIENT").previewReadOnly).toBeUndefined();
   });
 });
 

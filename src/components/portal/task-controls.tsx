@@ -18,12 +18,14 @@ export function TaskControls({
   area,
   assigneeId,
   members,
+  readOnly = false,
 }: {
   taskId: string;
   status: string;
   area: "freelancer" | "agency";
   assigneeId?: string | null;
   members?: { id: string; name: string }[];
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -45,6 +47,7 @@ export function TaskControls({
   }
 
   if (finished) return <span className="text-xs text-stone-500">Finished</span>;
+  if (readOnly) return <span className="text-xs text-stone-500">Preview: read only</span>;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select aria-label="Task status" className={select} disabled={busy} value={status} onChange={(e) => void change({ status: e.target.value })}>

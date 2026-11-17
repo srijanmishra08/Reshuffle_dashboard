@@ -11,6 +11,7 @@ type Hub = {
   scopes: { id: string; dealId: string; number: string | null; title: string; status: string; version: number; totalPaise: number }[];
   invoices: { id: string; number: string | null; status: string; issueDate: string | null; dueDate: string | null; totalPaise: number; paidPaise: number }[];
   workOrders: { id: string; number: string | null; status: string; issueDate: string | null }[];
+  letters: { id: string; number: string | null; subject: string; status: string; issueDate: string | null }[];
   forms: { id: string; title: string; status: string; responses: number }[];
   access: { email: string; hasSignedIn: boolean }[];
   moneyHidden: boolean;
@@ -124,6 +125,20 @@ export function ClientHub({ companyId }: { companyId: string }) {
                   <li key={w.id} className="flex items-center justify-between gap-2 py-2">
                     <Link href={`/work-orders/${w.id}`} className={link}>{w.number ?? "Draft work order"}</Link>
                     <span className={pill}>{label(w.status)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+          <Card title="Letters and agreements" action={<Link href="/letters/new" className="text-xs text-slate-500 underline">New letter</Link>}>
+            {hub.letters.length === 0 ? (
+              empty("No letters, offer letters or service agreements for this client yet.")
+            ) : (
+              <ul className="divide-y divide-slate-100 text-sm">
+                {hub.letters.map((l) => (
+                  <li key={l.id} className="flex items-center justify-between gap-2 py-2">
+                    <Link href={`/letters/${l.id}`} className={link}>{l.subject || l.number || "Draft letter"}</Link>
+                    <span className={pill}>{l.number ? `${l.number} · ${label(l.status)}` : label(l.status)}</span>
                   </li>
                 ))}
               </ul>

@@ -41,6 +41,7 @@ export type InvoiceDetail = {
   status: InvoiceStatus;
   companyId: string;
   companyName: string;
+  projectId?: string | null;
   issueDate: string | null;
   dueDate: string | null;
   placeOfSupply: string | null;
@@ -101,6 +102,7 @@ export type WorkOrderDetail = {
   status: WorkOrderStatus;
   companyId: string;
   companyName: string;
+  projectId?: string | null;
   customerRef: string | null;
   requestedBy: string | null;
   department: string | null;

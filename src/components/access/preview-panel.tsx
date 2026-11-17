@@ -13,7 +13,10 @@ const buttons = [
  * Admin-only. Opens each outside portal exactly as that person sees it, filled with demo data kept apart from
  * the real records. You stay signed in as yourself, and no email is added to the allowlist.
  */
-export function PreviewPanel() {
+type Option = { id: string; name: string };
+
+export function PreviewPanel({ clients, freelancers, agencies }: { clients: Option[]; freelancers: Option[]; agencies: Option[] }) {
+  const [real, setReal] = useState<Record<string, string>>({});
   const [seeded, setSeeded] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -95,6 +98,48 @@ export function PreviewPanel() {
           </button>
         </>
       ) : null}
+
+      <div className="mt-5 border-t border-slate-100 pt-4">
+        <h4 className="text-sm font-semibold text-slate-800">Or see a real account exactly as that person sees it</h4>
+        <p className="mt-1 text-xs text-slate-500">Uses their real data, so you can check what a client, freelancer or agency will actually see. It is read-only: nothing can be changed from here.</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {(
+            [
+              { as: "CLIENT", label: "Client", options: clients, home: "/portal" },
+              { as: "FREELANCER", label: "Freelancer", options: freelancers, home: "/me" },
+              { as: "AGENCY", label: "Partner agency", options: agencies, home: "/agency" },
+            ] as const
+          ).map((r) => (
+            <div key={r.as} className="space-y-1.5">
+              <select
+                aria-label={`Choose a ${r.label.toLowerCase()}`}
+                className="block w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+                value={real[r.as] ?? ""}
+                onChange={(e) => setReal({ ...real, [r.as]: e.target.value })}
+              >
+                <option value="">{r.label}…</option>
+                {r.options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={busy !== "" || !real[r.as]}
+                onClick={() =>
+                  void run(`real-${r.as}`, async () => {
+                    await api("/api/preview", { method: "POST", ...jsonBody({ as: r.as, recordId: real[r.as] }) });
+                    window.location.href = r.home;
+                  })
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-900 hover:border-slate-900 disabled:opacity-50"
+              >
+                {busy === `real-${r.as}` ? "Opening…" : `Open as this ${r.label.toLowerCase()}`}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

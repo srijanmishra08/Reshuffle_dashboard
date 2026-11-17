@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getAuth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
-import { isPreviewRole, PREVIEW_COOKIE, previewUser } from "@/server/preview";
+import { parsePreviewChoice, PREVIEW_COOKIE, previewUser } from "@/server/preview";
 import { roleAllowed, STAFF, type Role } from "@/server/roles";
 import { resolveSessionUser, type AuthedUser } from "@/server/session-user";
 
@@ -35,10 +35,9 @@ export const getRealSessionUser = cache(async (): Promise<AuthedUser | null> => 
   return resolveSessionUser(getDb(), user);
 });
 
-async function previewRoleFromCookie() {
+async function previewChoiceFromCookie() {
   try {
-    const value = (await cookies()).get(PREVIEW_COOKIE)?.value;
-    return isPreviewRole(value) ? value : null;
+    return parsePreviewChoice((await cookies()).get(PREVIEW_COOKIE)?.value);
   } catch {
     // No request cookies here (for example a test without a request): no preview.
     return null;
@@ -52,8 +51,8 @@ async function previewRoleFromCookie() {
 export const getSessionUser = cache(async (): Promise<AuthedUser | null> => {
   const real = await getRealSessionUser();
   if (!real || real.role !== "ADMIN") return real;
-  const as = await previewRoleFromCookie();
-  return as ? previewUser(real, as) : real;
+  const choice = await previewChoiceFromCookie();
+  return choice ? previewUser(real, choice) : real;
 });
 
 /** Guard for starting or ending a preview and managing demo data: the real account must be an admin. */

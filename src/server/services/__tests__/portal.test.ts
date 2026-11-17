@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { createTestDb } from "@/test/db";
 import { schema, type Db } from "@/server/db/client";
 import type { AuthedUser } from "@/server/session-user";
@@ -12,9 +13,11 @@ import {
   getClientHome,
   getClientProject,
   getFreelancerHome,
+  addPortalComment,
   respondToTask,
   updatePortalTask,
 } from "../portal";
+import { addTeamComment, listTaskComments } from "../task-comments";
 
 const ctx = { orgId: "default", userId: "staff-1" };
 let db: Db;
@@ -133,7 +136,7 @@ describe("client portal", () => {
     expect(p.tasks.length).toBe(5);
     expect(p.progressPercent).toBe(20);
     for (const task of p.tasks) {
-      expect(Object.keys(task).sort()).toEqual(["description", "dueDate", "id", "priority", "status", "title"]);
+      expect(Object.keys(task).sort()).toEqual(["comments", "description", "dueDate", "id", "priority", "status", "title"]);
     }
     expect((await getClientProject(db, user("CLIENT", { companyId: companyA }), projectB)).ok).toBe(false);
     expect((await getClientProject(db, user("CLIENT", { companyId: companyB }), projectA)).ok).toBe(false);
@@ -142,7 +145,7 @@ describe("client portal", () => {
   it("approves or sends back work waiting for review, and nothing else", async () => {
     const client = user("CLIENT", { companyId: companyA });
     expect(must(await respondToTask(db, client, tasks.review, { decision: "APPROVE" })).status).toBe("COMPLETED");
-    expect(must(await respondToTask(db, client, tasks.review2, { decision: "REVISE" })).status).toBe("REVISION");
+    expect(must(await respondToTask(db, client, tasks.review2, { decision: "REVISE", comment: "Please make the logo bigger" })).status).toBe("REVISION");
     expect((await respondToTask(db, client, tasks.review, { decision: "APPROVE" })).ok).toBe(false);
     expect((await respondToTask(db, client, tasks.todo, { decision: "APPROVE" })).ok).toBe(false);
     expect((await respondToTask(db, client, tasks.reviewB, { decision: "APPROVE" })).ok).toBe(false);
@@ -216,5 +219,80 @@ describe("agency portal", () => {
     expect((await updatePortalTask(db, agency, tasks.two, { assigneeId: "fl-3" })).ok).toBe(false);
     expect((await updatePortalTask(db, agency, tasks.three, { status: "IN_PROGRESS" })).ok).toBe(false);
     expect((await updatePortalTask(db, agency, tasks.done, { status: "TODO" })).ok).toBe(false);
+  });
+});
+
+describe("comments on tasks", () => {
+  it("needs a reason to ask for changes, and keeps it on the task", async () => {
+    const client = user("CLIENT", { companyId: companyA });
+    await db.update(schema.projectTasks).set({ status: "CLIENT_REVIEW" }).where(eq(schema.projectTasks.id, tasks.todo));
+    expect((await respondToTask(db, client, tasks.todo, { decision: "REVISE" })).ok).toBe(false);
+    expect((await respondToTask(db, client, tasks.todo, { decision: "REVISE", comment: "   " })).ok).toBe(false);
+    expect((await respondToTask(db, client, tasks.todo, { decision: "REVISE", comment: "x".repeat(2001) })).ok).toBe(false);
+    expect(must(await listTaskComments(db, ctx, tasks.todo))).toEqual([]);
+
+    expect(must(await respondToTask(db, client, tasks.todo, { decision: "REVISE", comment: "  Change the heading colour  " })).status).toBe("REVISION");
+    const thread = must(await listTaskComments(db, ctx, tasks.todo));
+    expect(thread).toHaveLength(1);
+    expect(thread[0]).toMatchObject({ authorRole: "CLIENT", kind: "REVISION_REQUEST", body: "Change the heading colour", internal: false });
+  });
+
+  it("lets an approval carry an optional note", async () => {
+    const client = user("CLIENT", { companyId: companyA });
+    await db.update(schema.projectTasks).set({ status: "CLIENT_REVIEW" }).where(eq(schema.projectTasks.id, tasks.two));
+    expect(must(await respondToTask(db, client, tasks.two, { decision: "APPROVE" })).status).toBe("COMPLETED");
+    expect(must(await listTaskComments(db, ctx, tasks.two))).toEqual([]);
+    await db.update(schema.projectTasks).set({ status: "CLIENT_REVIEW" }).where(eq(schema.projectTasks.id, tasks.two));
+    must(await respondToTask(db, client, tasks.two, { decision: "APPROVE", comment: "Looks great" }));
+    expect(must(await listTaskComments(db, ctx, tasks.two))[0]).toMatchObject({ kind: "APPROVAL", body: "Looks great" });
+  });
+
+  it("shows the client's reason to the freelancer and the agency, and the thread to the client", async () => {
+    const mine = must(await getFreelancerHome(db, user("FREELANCER", { freelancerId: "fl-1" }))).tasks.find((t) => t.id === tasks.todo)!;
+    expect(mine.comments.map((c) => c.body)).toEqual(["Change the heading colour"]);
+    const viaAgency = must(await getAgencyHome(db, user("AGENCY", { agencyId: tasks.agencyId }))).tasks.find((t) => t.id === tasks.todo)!;
+    expect(viaAgency.comments).toHaveLength(1);
+    const board = must(await getClientProject(db, user("CLIENT", { companyId: companyA }), projectA)).tasks.find((t) => t.id === tasks.todo)!;
+    expect(board.comments[0]).toMatchObject({ authorName: "CLIENT", kind: "REVISION_REQUEST" });
+    expect(Object.keys(board.comments[0]).sort()).toEqual(["authorName", "authorRole", "body", "createdAt", "id", "kind"]);
+  });
+
+  it("keeps internal team notes from the client but not from the people doing the work", async () => {
+    must(await addTeamComment(db, ctx, "Staff", tasks.todo, { body: "Public reply", internal: false }));
+    must(await addTeamComment(db, ctx, "Staff", tasks.todo, { body: "Budget is tight, keep it small", internal: true }));
+    expect(must(await listTaskComments(db, ctx, tasks.todo)).map((c) => c.body)).toContain("Budget is tight, keep it small");
+    const client = must(await getClientProject(db, user("CLIENT", { companyId: companyA }), projectA)).tasks.find((t) => t.id === tasks.todo)!;
+    expect(client.comments.map((c) => c.body)).toContain("Public reply");
+    expect(client.comments.map((c) => c.body)).not.toContain("Budget is tight, keep it small");
+    const freelancer = must(await getFreelancerHome(db, user("FREELANCER", { freelancerId: "fl-1" }))).tasks.find((t) => t.id === tasks.todo)!;
+    expect(freelancer.comments.map((c) => c.body)).toContain("Budget is tight, keep it small");
+    expect((await addTeamComment(db, ctx, "Staff", tasks.todo, { body: "" })).ok).toBe(false);
+    expect((await addTeamComment(db, { orgId: "other", userId: "x" }, "Staff", tasks.todo, { body: "Hi" })).ok).toBe(false);
+    expect((await listTaskComments(db, { orgId: "other", userId: "x" }, tasks.todo)).ok).toBe(false);
+  });
+
+  it("lets each person comment only on tasks they can see", async () => {
+    const client = user("CLIENT", { companyId: companyA });
+    expect(must(await addPortalComment(db, client, tasks.todo, { body: "Thanks, one more thing" })).authorRole).toBe("CLIENT");
+    expect((await addPortalComment(db, client, tasks.three, { body: "Not mine" })).ok).toBe(false);
+    expect((await addPortalComment(db, client, tasks.todo, { body: "  " })).ok).toBe(false);
+    expect(must(await addPortalComment(db, user("FREELANCER", { freelancerId: "fl-1" }), tasks.todo, { body: "Done, please check" })).authorRole).toBe("FREELANCER");
+    expect((await addPortalComment(db, user("FREELANCER", { freelancerId: "fl-1" }), tasks.three, { body: "No" })).ok).toBe(false);
+    expect((await addPortalComment(db, user("FREELANCER", { freelancerId: "fl-2" }), tasks.todo, { body: "No" })).ok).toBe(false);
+    expect(must(await addPortalComment(db, user("AGENCY", { agencyId: tasks.agencyId }), tasks.todo, { body: "On it" })).authorRole).toBe("AGENCY");
+    expect((await addPortalComment(db, user("AGENCY", { agencyId: tasks.agencyId }), tasks.three, { body: "No" })).ok).toBe(false);
+    expect((await addPortalComment(db, user("ADMIN"), tasks.todo, { body: "No" })).ok).toBe(false);
+  });
+
+  it("refuses every change in a read-only preview of a real account", async () => {
+    const preview = { ...user("CLIENT", { companyId: companyA }), previewing: true, previewReadOnly: true };
+    await db.update(schema.projectTasks).set({ status: "CLIENT_REVIEW" }).where(eq(schema.projectTasks.id, tasks.reviewB));
+    expect((await respondToTask(db, preview, tasks.review, { decision: "APPROVE" })).ok).toBe(false);
+    expect((await addPortalComment(db, preview, tasks.todo, { body: "From a preview" })).ok).toBe(false);
+    const frPreview = { ...user("FREELANCER", { freelancerId: "fl-1" }), previewing: true, previewReadOnly: true };
+    expect((await updatePortalTask(db, frPreview, tasks.todo, { status: "IN_PROGRESS" })).ok).toBe(false);
+    // Reading still works.
+    expect(must(await getClientHome(db, preview)).company.name).toBe("Fake Traders");
+    expect(must(await getFreelancerHome(db, frPreview)).freelancer.name).toBe("Free One");
   });
 });

@@ -148,6 +148,13 @@
       "when": 1794907200426,
       "tag": "0020_shiny_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794913599025,
+      "tag": "0021_last_white_queen",
+      "breakpoints": true
     }
   ]
 }

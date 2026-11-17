@@ -1,4 +1,5 @@
 import { PortalShell } from "@/components/portal/portal-shell";
+import { TaskComments } from "@/components/portal/task-comments";
 import { TaskControls } from "@/components/portal/task-controls";
 import { Card, Empty, Pill, Stat, TaskStatusPill, day, money, td, th } from "@/components/portal/ui";
 import { getDb } from "@/server/db/client";
@@ -16,7 +17,7 @@ export default async function AgencyPage() {
 
   if (!result.ok) {
     return (
-      <PortalShell area="Partner agency" userName={user.name} previewing={user.previewing} title="Welcome">
+      <PortalShell area="Partner agency" userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly} title="Welcome">
         <Card title="Your account is not set up yet">
           <Empty>{result.error}</Empty>
         </Card>
@@ -29,7 +30,7 @@ export default async function AgencyPage() {
   const today = result.data.today;
 
   return (
-    <PortalShell area="Partner agency" userName={user.name} previewing={user.previewing} title={agency.name} subtitle="Your team's work with Reshuffle and what you are owed.">
+    <PortalShell area="Partner agency" userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly} title={agency.name} subtitle="Your team's work with Reshuffle and what you are owed.">
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Team members" value={String(members.length)} />
         <Stat label="Open tasks" value={String(open.length)} />
@@ -80,13 +81,23 @@ export default async function AgencyPage() {
                     {t.dueDate ? <span className={t.dueDate < today && !finished(t.status) ? "font-medium text-rose-600" : ""}> · due {day(t.dueDate)}</span> : null}
                   </p>
                   {t.description ? <p className="mt-1 text-sm text-stone-600">{t.description}</p> : null}
+                  {t.comments.length > 0 || !user.previewReadOnly ? (
+                    <details className="mt-2" open={t.status === "REVISION"}>
+                      <summary className="cursor-pointer text-xs font-medium text-stone-600 underline">
+                        {t.comments.length > 0 ? `Comments (${t.comments.length})` : "Add a comment"}
+                      </summary>
+                      <div className="mt-2">
+                        <TaskComments taskId={t.id} area="agency" comments={t.comments} readOnly={user.previewReadOnly} />
+                      </div>
+                    </details>
+                  ) : null}
                 </div>
                 {finished(t.status) ? (
                   <TaskStatusPill status={t.status} />
                 ) : (
                   <div className="flex items-center gap-2">
                     {t.status === "REVISION" ? <Pill tone="warn">Changes requested</Pill> : null}
-                    <TaskControls taskId={t.id} status={t.status} area="agency" assigneeId={t.assigneeId} members={members.map((m) => ({ id: m.id, name: m.name }))} />
+                    <TaskControls taskId={t.id} status={t.status} area="agency" assigneeId={t.assigneeId} members={members.map((m) => ({ id: m.id, name: m.name }))} readOnly={user.previewReadOnly} />
                   </div>
                 )}
               </li>

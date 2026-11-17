@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
-import { clientTaskResponseSchema, portalTaskUpdateSchema } from "@/lib/schemas/access";
+import { clientTaskResponseSchema, portalCommentSchema, portalTaskUpdateSchema } from "@/lib/schemas/access";
 import { doneStatuses } from "@/lib/schemas/project-tasks";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
@@ -9,6 +9,7 @@ import type { ServiceContext } from "@/server/services/companies";
 import { getProject } from "@/server/services/delivery";
 import { todayIst } from "@/server/services/invoices";
 import { listProjectProgress, updateTask } from "@/server/services/project-tasks";
+import { commentsByTask, insertComment, type TaskCommentRow } from "@/server/services/task-comments";
 import { getFreelancerTeamView } from "@/server/services/team";
 import type { AuthedUser } from "@/server/session-user";
 
@@ -33,6 +34,13 @@ const {
 
 const ctxOf = (user: AuthedUser): ServiceContext => ({ orgId: user.orgId, userId: user.id });
 const isDone = (status: string) => (doneStatuses as readonly string[]).includes(status);
+
+/** A preview of a real account shows exactly what that person sees, but can change nothing. */
+const readOnlyRefusal = (user: AuthedUser) =>
+  user.previewReadOnly ? fail("FORBIDDEN", "This is a read-only preview of a real account. Nothing can be changed.") : null;
+
+/** The shape of a comment as shown in a portal. */
+const publicComment = (c: TaskCommentRow) => ({ id: c.id, authorRole: c.authorRole, authorName: c.authorName, kind: c.kind, body: c.body, createdAt: c.createdAt });
 
 /* --------------------------------- client ---------------------------------- */
 
@@ -125,6 +133,7 @@ export async function getClientProject(db: Db, user: AuthedUser, projectId: stri
       .orderBy(asc(projectTasks.position), asc(projectTasks.createdAt)),
     listProjectProgress(db, ctx, { companyId }),
   ]);
+  const comments = await commentsByTask(db, tasks.map((t) => t.id), { includeInternal: false });
   const p = project.data;
   return ok({
     id: p.id,
@@ -136,7 +145,8 @@ export async function getClientProject(db: Db, user: AuthedUser, projectId: stri
     invoicedPaise: p.invoicedPaise,
     paidPaise: p.paidPaise,
     milestones: p.milestones.map((m) => ({ id: m.id, label: m.label, percent: m.percent, amountPaise: m.amountPaise, dueDate: m.dueDate, status: m.status })),
-    tasks,
+    tasks: tasks.map((t) => ({ ...t, comments: (comments.get(t.id) ?? []).map(publicComment) })),
+    today: todayIst(new Date()),
   });
 }
 
@@ -144,8 +154,10 @@ export async function getClientProject(db: Db, user: AuthedUser, projectId: stri
 export async function respondToTask(db: Db, user: AuthedUser, taskId: string, raw: unknown) {
   const companyId = user.links.companyId;
   if (user.role !== "CLIENT" || !companyId) return fail("NOT_FOUND", NO_CLIENT);
+  const refused = readOnlyRefusal(user);
+  if (refused) return refused;
   const parsed = clientTaskResponseSchema.safeParse(raw);
-  if (!parsed.success) return fail("VALIDATION", "Choose approve or request changes");
+  if (!parsed.success) return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Choose approve or request changes");
   const ctx = ctxOf(user);
   const rows = await db
     .select({ id: projectTasks.id, status: projectTasks.status, projectId: projectTasks.projectId })
@@ -159,6 +171,18 @@ export async function respondToTask(db: Db, user: AuthedUser, taskId: string, ra
   const decision = parsed.data.decision;
   const moved = await updateTask(db, ctx, taskId, { status: decision === "APPROVE" ? "COMPLETED" : "REVISION" });
   if (!moved.ok) return moved;
+  // The reason for the decision stays on the task, so the team and the freelancer can read it.
+  if (parsed.data.comment) {
+    await insertComment(db, {
+      orgId: ctx.orgId,
+      taskId,
+      authorRole: "CLIENT",
+      authorName: user.name,
+      authorUserId: user.id,
+      kind: decision === "APPROVE" ? "APPROVAL" : "REVISION_REQUEST",
+      body: parsed.data.comment,
+    });
+  }
   await logActivity(
     { actorId: user.id, action: decision === "APPROVE" ? "task.client_approved" : "task.client_requested_changes", module: "projects", entityType: "task", entityId: taskId, metadata: { projectId: task.projectId } },
     db
@@ -212,7 +236,12 @@ export async function getFreelancerHome(db: Db, user: AuthedUser) {
   const ctx = ctxOf(user);
   const team = await getFreelancerTeamView(db, ctx, freelancerId);
   if (!team.ok) return fail("NOT_FOUND", NO_FREELANCER);
-  return ok({ ...team.data, today: todayIst(new Date()) });
+  const comments = await commentsByTask(db, team.data.tasks.map((t) => t.id), { includeInternal: true });
+  return ok({
+    ...team.data,
+    tasks: team.data.tasks.map((t) => ({ ...t, comments: (comments.get(t.id) ?? []).map(publicComment) })),
+    today: todayIst(new Date()),
+  });
 }
 
 /**
@@ -220,6 +249,8 @@ export async function getFreelancerHome(db: Db, user: AuthedUser) {
  * Only a few statuses are open to them; finishing is for the team and the client.
  */
 export async function updatePortalTask(db: Db, user: AuthedUser, taskId: string, raw: unknown) {
+  const refused = readOnlyRefusal(user);
+  if (refused) return refused;
   const parsed = portalTaskUpdateSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Invalid change");
   const ctx = ctxOf(user);
@@ -288,14 +319,54 @@ export async function getAgencyHome(db: Db, user: AuthedUser) {
       .where(and(inArray(payouts.freelancerId, memberIds), eq(payouts.orgId, ctx.orgId)))
       .groupBy(payouts.status),
   ]);
+  const comments = await commentsByTask(db, tasks.map((t) => t.id), { includeInternal: true });
   const names = new Map(members.map((m) => [m.id, m.name]));
   const total = (status: string) => Number(pay.find((p) => p.status === status)?.total ?? 0);
   return ok({
     agency,
     members: members.map((m) => ({ ...m, openTasks: tasks.filter((t) => t.assigneeId === m.id && !isDone(t.status)).length })),
-    tasks: tasks.map((t) => ({ ...t, assigneeName: t.assigneeId ? (names.get(t.assigneeId) ?? null) : null })),
+    tasks: tasks.map((t) => ({ ...t, assigneeName: t.assigneeId ? (names.get(t.assigneeId) ?? null) : null, comments: (comments.get(t.id) ?? []).map(publicComment) })),
     pendingPaise: total("PENDING"),
     paidPaise: total("PAID"),
     today: todayIst(new Date()),
   });
+}
+
+/**
+ * A client, freelancer or agency adds a comment to a task they can see: the client on any task of their own
+ * projects, a freelancer on tasks assigned to them, an agency on tasks held by its freelancers.
+ */
+export async function addPortalComment(db: Db, user: AuthedUser, taskId: string, raw: unknown) {
+  const refused = readOnlyRefusal(user);
+  if (refused) return refused;
+  const parsed = portalCommentSchema.safeParse(raw);
+  if (!parsed.success) return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Write a comment");
+  const ctx = ctxOf(user);
+
+  const rows = await db
+    .select({ id: projectTasks.id, assigneeId: projectTasks.assigneeId, companyId: deliveryProjects.companyId })
+    .from(projectTasks)
+    .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
+    .where(and(eq(projectTasks.id, taskId), eq(projectTasks.orgId, ctx.orgId)))
+    .limit(1);
+  const task = rows[0];
+  let allowed = false;
+  if (task) {
+    if (user.role === "CLIENT") allowed = Boolean(user.links.companyId) && task.companyId === user.links.companyId;
+    else if (user.role === "FREELANCER") allowed = Boolean(user.links.freelancerId) && task.assigneeId === user.links.freelancerId;
+    else if (user.role === "AGENCY" && user.links.agencyId && task.assigneeId) {
+      const member = await db
+        .select({ id: agencyFreelancers.freelancerId })
+        .from(agencyFreelancers)
+        .where(and(eq(agencyFreelancers.agencyId, user.links.agencyId), eq(agencyFreelancers.freelancerId, task.assigneeId)))
+        .limit(1);
+      allowed = member.length > 0;
+    }
+  }
+  // A task that is not theirs looks the same as one that does not exist.
+  if (!task || !allowed) return fail("NOT_FOUND", "Task not found");
+  const authorRole = user.role === "CLIENT" ? "CLIENT" : user.role === "AGENCY" ? "AGENCY" : "FREELANCER";
+  const row = await insertComment(db, { orgId: ctx.orgId, taskId, authorRole, authorName: user.name, authorUserId: user.id, body: parsed.data.body });
+  await logActivity({ actorId: user.id, action: "task.commented", module: "projects", entityType: "task", entityId: taskId }, db);
+  return ok(publicComment(row));
 }
