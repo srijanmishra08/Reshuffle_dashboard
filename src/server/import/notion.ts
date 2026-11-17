@@ -1,6 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
+import { toPaise } from "@/server/lib/money";
+import type { DealStage } from "@/server/models/deals";
+import { quotationStatusValues } from "@/server/models/deals";
 
 /**
  * One-time import from a Notion "Markdown & CSV" export.
@@ -8,7 +11,9 @@ import { schema } from "@/server/db/client";
  * so re-running updates instead of duplicating. Never logs names or contact details.
  */
 
-export type ImportKind = "clients" | "products" | "meetings";
+export type ImportKind = "clients" | "products" | "meetings" | "reference-clients";
+
+export const importKinds: ImportKind[] = ["clients", "products", "meetings", "reference-clients"];
 
 export type KindReport = {
   created: number;
@@ -29,6 +34,56 @@ export const processStatusToLifecycle: Record<string, schema.CompanyLifecycle> =
   maintenance: "MAINTENANCE",
   closed: "CLOSED",
 };
+
+/** Notion Sales "Reference Client" status -> deal stage. Edit here if the Notion labels differ. */
+export const leadStatusToStage: Record<string, DealStage> = {
+  lead: "LEAD",
+  new: "LEAD",
+  followup: "CONTACTED",
+  contacted: "CONTACTED",
+  proposalsent: "PROPOSAL_SENT",
+  negotiation: "NEGOTIATION",
+  client: "WON",
+  converted: "WON",
+  won: "WON",
+  notconverted: "LOST",
+  lost: "LOST",
+  dropped: "LOST",
+};
+
+type QuotationStatus = (typeof quotationStatusValues)[number];
+
+/** Notion "Quotation status" -> deal quotation status. */
+export const quotationToStatus: Record<string, QuotationStatus> = {
+  none: "NONE",
+  notsent: "NONE",
+  notstarted: "NONE",
+  pending: "DRAFTED",
+  draft: "DRAFTED",
+  drafted: "DRAFTED",
+  inprogress: "DRAFTED",
+  sent: "SENT",
+  shared: "SENT",
+  accepted: "ACCEPTED",
+  approved: "ACCEPTED",
+  rejected: "REJECTED",
+  declined: "REJECTED",
+};
+
+/** Deal values are int4 paise in the database. */
+const MAX_INT4 = 2_147_483_647;
+
+/** "₹1,20,000", "Rs. 45000.50", "INR 1200" -> paise. Returns null when the text is not a plain rupee amount. */
+export function parseRupees(value: string): number | null {
+  const text = value.replace(/₹|rs\.?|inr|\/-|\s/gi, "");
+  if (!text) return null;
+  try {
+    const amount = toPaise(text);
+    return amount >= 0 && amount <= MAX_INT4 ? amount : null;
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // CSV parsing (RFC 4180: quotes, escaped quotes, newlines inside quotes, BOM)
@@ -133,8 +188,14 @@ export async function importNotion(
 ): Promise<ImportReport> {
   const orgId = options.orgId ?? "default";
   const dryRun = options.dryRun;
-  const report: ImportReport = { clients: emptyReport(), products: emptyReport(), meetings: emptyReport(), dryRun };
-  const { verticals, companies, contacts, meetings } = schema;
+  const report: ImportReport = {
+    clients: emptyReport(),
+    products: emptyReport(),
+    meetings: emptyReport(),
+    "reference-clients": emptyReport(),
+    dryRun,
+  };
+  const { verticals, companies, contacts, meetings, deals, dealStageHistory } = schema;
 
   // --- products -> verticals ------------------------------------------------
   const verticalByName = new Map<string, string>();
@@ -322,6 +383,137 @@ export async function importNotion(
         if (!dryRun) {
           const now = new Date();
           await db.insert(meetings).values({ orgId, externalId, ...values, createdAt: now, updatedAt: now });
+        }
+      }
+    }
+  }
+
+  // --- reference clients (sales leads) -> deals, plus a company when none exists ----
+  if (input["reference-clients"]) {
+    const leads = report["reference-clients"];
+    const isReal = (id: string | undefined): id is string => Boolean(id) && !id!.startsWith("planned:");
+
+    for (const [index, rec] of toRecords(input["reference-clients"]).entries()) {
+      const row = `reference-clients row ${index + 2}`;
+      const leadName = pick(rec, ["leadname", "name", "lead", "title"]);
+      const companyName = pick(rec, ["business", "businessname", "company", "companyname"]) || leadName;
+
+      if (!companyName) {
+        leads.skipped++;
+        leads.warnings.push(`${row}: no name`);
+        continue;
+      }
+
+      const statusKey = normaliseHeader(pick(rec, ["status", "leadstatus", "stage"]));
+      const stage = leadStatusToStage[statusKey] ?? "LEAD";
+      if (statusKey && !leadStatusToStage[statusKey]) {
+        leads.warnings.push(`${row}: unknown status "${statusKey}", used LEAD`);
+      }
+
+      const quotationKey = normaliseHeader(pick(rec, ["quotationstatus", "quotation", "quote", "quotestatus"]));
+      const quotationStatus = quotationToStatus[quotationKey] ?? "NONE";
+      if (quotationKey && !quotationToStatus[quotationKey]) {
+        leads.warnings.push(`${row}: unknown quotation status "${quotationKey}", used NONE`);
+      }
+
+      const amountText = pick(rec, ["amount", "value", "dealvalue", "quotationamount", "budget"]);
+      const amount = amountText ? parseRupees(amountText) : 0;
+      if (amount === null) {
+        leads.warnings.push(`${row}: unreadable amount, used 0`);
+      }
+
+      const verticalName = cleanRelation(pick(rec, ["producttype", "product", "products", "vertical"]));
+      const verticalId = verticalName ? verticalByName.get(verticalName.toLowerCase()) : undefined;
+      if (verticalName && !verticalId) {
+        leads.warnings.push(`${row}: vertical not found, left empty`);
+      }
+
+      const referrer = cleanRelation(pick(rec, ["referredby", "referrer", "reference"])) || null;
+      const reason = pick(rec, ["reasonfornotconverting", "reason", "lostreason"]) || null;
+      if (reason && stage !== "LOST") {
+        leads.warnings.push(`${row}: has a reason for not converting but status is not lost; check the stage by hand`);
+      }
+
+      // Company: reuse one with the same name (from the clients import or typed in), otherwise create a prospect.
+      let companyId = companyByName.get(companyName.toLowerCase());
+      if (!companyId) {
+        companyId = `planned:${slug(companyName)}`;
+        if (!dryRun) {
+          const now = new Date();
+          const inserted = await db
+            .insert(companies)
+            .values({
+              orgId,
+              externalId: `notion:reference-clients:${slug(companyName)}`,
+              name: companyName,
+              lifecycle: stage === "WON" ? "ACTIVE" : "PROSPECT",
+              verticalId: isReal(verticalId) ? verticalId : null,
+              source: referrer ? "Referral" : null,
+              referrer,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning({ id: companies.id });
+          companyId = inserted[0].id;
+        }
+        companyByName.set(companyName.toLowerCase(), companyId);
+      }
+
+      const externalId = `notion:reference-clients:${slug(companyName)}`;
+      // Fields Notion owns. Stage is set once at creation: after that the dashboard owns it (and its history).
+      const values = {
+        title: verticalName ? `${companyName}: ${verticalName}` : companyName,
+        valuePaise: amount ?? 0,
+        verticalId: isReal(verticalId) ? verticalId : null,
+        source: referrer ? "Referral" : null,
+        referrer,
+        quotationStatus,
+        currentBlock: pick(rec, ["currentblock", "block", "blocker"]) || null,
+        lostReason: reason,
+      };
+
+      const found = isReal(companyId)
+        ? await db
+            .select({ id: deals.id })
+            .from(deals)
+            .where(and(eq(deals.orgId, orgId), eq(deals.externalId, externalId)))
+            .limit(1)
+        : [];
+
+      if (found[0]) {
+        leads.updated++;
+        if (!dryRun) {
+          await db.update(deals).set({ ...values, updatedAt: new Date() }).where(eq(deals.id, found[0].id));
+        }
+      } else {
+        leads.created++;
+        if (!dryRun && isReal(companyId)) {
+          const realCompanyId = companyId;
+          const now = new Date();
+          await db.transaction(async (tx) => {
+            const inserted = await tx
+              .insert(deals)
+              .values({
+                orgId,
+                externalId,
+                companyId: realCompanyId,
+                stage,
+                closedAt: stage === "WON" || stage === "LOST" ? now : null,
+                ...values,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning({ id: deals.id });
+            await tx.insert(dealStageHistory).values({
+              orgId,
+              dealId: inserted[0].id,
+              fromStage: null,
+              toStage: stage,
+              note: "Imported from Notion",
+              changedBy: null,
+              at: now,
+            });
+          });
         }
       }
     }

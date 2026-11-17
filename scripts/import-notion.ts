@@ -1,20 +1,26 @@
 /**
  * Usage:
- *   npx tsx scripts/import-notion.ts <export-dir> [--only=clients,products,meetings] [--dry-run]
+ *   npx tsx scripts/import-notion.ts <export-dir> [--only=clients,products,meetings,reference-clients] [--dry-run]
  *
  * <export-dir> is an unzipped Notion "Markdown & CSV" export kept OUTSIDE this repo.
- * CSV files are found by name: any file whose name contains "client", "product" or "meeting"
- * (case-insensitive). Re-running is safe; rows are keyed on a stable external_id.
+ * CSV files are found by file name (case-insensitive): "client", "product", "meeting", and
+ * "reference" for the Sales > Reference Client lead list (which becomes deals). Re-running is safe; rows are keyed on a stable external_id.
  * Prints counts and row numbers only, never names or contact details.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/server/db/schema";
-import { importNotion, type ImportInput, type ImportKind } from "../src/server/import/notion";
+import { importKinds as kinds, importNotion, type ImportInput, type ImportKind } from "../src/server/import/notion";
 
-const kinds: ImportKind[] = ["clients", "products", "meetings"];
+/** A file belongs to a kind when its name contains `has` and none of `not`. */
+const fileRules: Record<ImportKind, { has: string; not: string[] }> = {
+  clients: { has: "client", not: ["reference"] },
+  products: { has: "product", not: [] },
+  meetings: { has: "meeting", not: [] },
+  "reference-clients": { has: "reference", not: [] },
+};
 
 function findCsvs(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -46,9 +52,14 @@ async function main() {
 
   for (const kind of kinds) {
     if (!only.includes(kind)) continue;
-    const needle = kind.slice(0, -1); // client, product, meeting
-    // Prefer the "_all" export when Notion produced both.
-    const matches = csvs.filter((file) => file.toLowerCase().includes(needle)).sort((a, b) => Number(/_all/i.test(b)) - Number(/_all/i.test(a)));
+    const rule = fileRules[kind];
+    // Match on the file name only, and prefer the "_all" export when Notion produced both.
+    const matches = csvs
+      .filter((file) => {
+        const name = basename(file).toLowerCase();
+        return name.includes(rule.has) && !rule.not.some((word) => name.includes(word));
+      })
+      .sort((a, b) => Number(/_all/i.test(b)) - Number(/_all/i.test(a)));
     if (matches[0]) {
       input[kind] = readFileSync(matches[0], "utf8");
     } else {
