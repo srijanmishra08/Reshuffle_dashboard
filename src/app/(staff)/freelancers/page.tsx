@@ -77,7 +77,7 @@ export default function FreelancersPage() {
       void refreshRows().catch(() => {
         setMessage("Could not refresh freelancers");
       });
-    }, 20000);
+    }, 30000);
 
     const onFocus = () => {
       void refreshRows().catch(() => {

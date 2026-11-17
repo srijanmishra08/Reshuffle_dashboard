@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Bell, Search } from "lucide-react";
 import { api } from "@/lib/api";
+import { pollWhileVisible } from "@/lib/poll";
 
 type Hit = { type: string; id: string; title: string; subtitle: string; href: string };
 type Notice = { id: string; kind: string; title: string; detail: string; href: string; tone: "warn" | "info" | "good" };
@@ -66,12 +67,13 @@ export function CommandBar() {
       api<Notice[]>("/api/notifications")
         .then((rows) => alive && setNotices(rows))
         .catch(() => undefined); // The bell is a convenience; pages show their own errors.
-    const first = setTimeout(load, 0);
-    const poll = setInterval(load, 120_000);
+    // The first load waits a couple of seconds so the page's own data is fetched first; the bell is a convenience.
+    const first = setTimeout(load, 2500);
+    const stop = pollWhileVisible(load, 300_000);
     return () => {
       alive = false;
       clearTimeout(first);
-      clearInterval(poll);
+      stop();
     };
   }, []);
 

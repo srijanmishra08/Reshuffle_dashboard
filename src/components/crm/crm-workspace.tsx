@@ -65,7 +65,7 @@ export function CrmWorkspace() {
       if (document.visibilityState === "visible") {
         void load().catch(() => setMessage("Could not refresh. Showing the last loaded data."));
       }
-    }, 30000);
+    }, 60000);
     return () => window.clearInterval(poll);
   }, [load]);
 
