@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Code2,
   Contact,
+  FileDown,
   FileSpreadsheet,
   FileText,
   Handshake,
@@ -77,6 +78,7 @@ export const departments: Department[] = [
     items: [
       { title: "Finance", href: "/finance", description: "Ledger, receivables, monthly view, GST and plan.", icon: Receipt },
       { title: "Invoices", href: "/invoices", description: "GST invoices, payments and receivables.", icon: FileSpreadsheet },
+      { title: "Invoice PDFs", href: "/invoice-pdfs", description: "PDFs made in the invoice software, saved automatically.", icon: FileDown },
       { title: "Work orders", href: "/work-orders", description: "Issue and track customer work orders.", icon: ClipboardList },
     ],
   },

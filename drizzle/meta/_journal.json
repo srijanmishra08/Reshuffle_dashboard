@@ -155,6 +155,13 @@
       "when": 1794913599025,
       "tag": "0021_last_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794914324967,
+      "tag": "0022_cute_lord_hawal",
+      "breakpoints": true
     }
   ]
 }
