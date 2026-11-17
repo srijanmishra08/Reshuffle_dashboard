@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb } from "@/test/db";
 import { schema, type Db } from "@/server/db/client";
-import { importNotion, parseCsv, toRecords } from "@/server/import/notion";
+import { importNotion, parseCsv, parseRupees, toRecords } from "@/server/import/notion";
 
 // Obviously fake data only. This repo is public.
 const products = `Name,Description
@@ -23,6 +23,24 @@ line two"
 Bad Date Meeting,not a date,Example Co One,
 Orphan,"November 13, 2026 10:00 AM",Unknown Co,
 `;
+
+const leads = `Lead Name,Business,Product type,Referred by,Status,Quotation status,Current block,Reason for not converting,Amount
+Test Lead One,Example Co One,Dairy,Test Referrer,Proposal sent,Sent,Waiting on budget,,"₹1,20,000"
+Test Lead Four,Example Lead Co Four,,,Client,Accepted,,,45000.50
+Test Lead Five,Example Lead Co Five,Nonexistent,,Mystery,Odd,,Too expensive,lots
+,,,,,,,,
+`;
+
+describe("parseRupees", () => {
+  it("reads rupee text into paise and rejects anything else", () => {
+    expect(parseRupees("₹1,20,000")).toBe(12000000);
+    expect(parseRupees("Rs. 45000.50")).toBe(4500050);
+    expect(parseRupees("5000/-")).toBe(500000);
+    expect(parseRupees("lots")).toBeNull();
+    expect(parseRupees("-100")).toBeNull();
+    expect(parseRupees("99999999999")).toBeNull();
+  });
+});
 
 describe("parseCsv", () => {
   it("handles quotes, escaped quotes, embedded newlines and BOM", () => {
@@ -90,5 +108,69 @@ describe("importNotion", () => {
     expect(report.meetings).toMatchObject({ created: 0, updated: 2 });
     expect(await db.select().from(schema.companies)).toHaveLength(3);
     expect(await db.select().from(schema.contacts)).toHaveLength(1);
+  });
+
+  it("dry run of reference clients writes no deals", async () => {
+    const report = await importNotion(db, { "reference-clients": leads }, { dryRun: true });
+    expect(report["reference-clients"]).toMatchObject({ created: 3, updated: 0, skipped: 0 });
+    expect(await db.select().from(schema.deals)).toHaveLength(0);
+    expect(await db.select().from(schema.companies)).toHaveLength(3);
+  });
+
+  it("imports reference clients as deals, reusing companies by name", async () => {
+    const report = await importNotion(db, { "reference-clients": leads }, { dryRun: false });
+    const r = report["reference-clients"];
+    expect(r).toMatchObject({ created: 3, updated: 0, skipped: 0 });
+    expect(r.warnings.join(" ")).toContain("unknown status");
+    expect(r.warnings.join(" ")).toContain("unknown quotation status");
+    expect(r.warnings.join(" ")).toContain("unreadable amount");
+    expect(r.warnings.join(" ")).toContain("vertical not found");
+    expect(r.warnings.join(" ")).toContain("reason for not converting");
+    // Warnings carry row numbers only, never names.
+    expect(r.warnings.join(" ")).not.toContain("Example");
+
+    // Existing company is reused, two new prospects are created.
+    expect(await db.select().from(schema.companies)).toHaveLength(5);
+    const [one] = await db.select().from(schema.companies).where(eq(schema.companies.name, "Example Co One"));
+    const [dealOne] = await db.select().from(schema.deals).where(eq(schema.deals.companyId, one.id));
+    expect(dealOne).toMatchObject({
+      stage: "PROPOSAL_SENT",
+      quotationStatus: "SENT",
+      valuePaise: 12000000,
+      verticalId: "vertical-dairy",
+      referrer: "Test Referrer",
+      source: "Referral",
+      currentBlock: "Waiting on budget",
+      closedAt: null,
+    });
+
+    const [four] = await db.select().from(schema.companies).where(eq(schema.companies.name, "Example Lead Co Four"));
+    expect(four.lifecycle).toBe("ACTIVE");
+    const [dealFour] = await db.select().from(schema.deals).where(eq(schema.deals.companyId, four.id));
+    expect(dealFour).toMatchObject({ stage: "WON", quotationStatus: "ACCEPTED", valuePaise: 4500050 });
+    expect(dealFour.closedAt).toBeInstanceOf(Date);
+
+    const [five] = await db.select().from(schema.companies).where(eq(schema.companies.name, "Example Lead Co Five"));
+    const [dealFive] = await db.select().from(schema.deals).where(eq(schema.deals.companyId, five.id));
+    expect(dealFive).toMatchObject({ stage: "LEAD", quotationStatus: "NONE", valuePaise: 0, lostReason: "Too expensive" });
+
+    const history = await db.select().from(schema.dealStageHistory);
+    expect(history).toHaveLength(3);
+    expect(history.every((h) => h.fromStage === null && h.note === "Imported from Notion")).toBe(true);
+  });
+
+  it("re-import updates Notion fields but keeps a stage changed in the dashboard", async () => {
+    const [one] = await db.select().from(schema.companies).where(eq(schema.companies.name, "Example Co One"));
+    await db.update(schema.deals).set({ stage: "NEGOTIATION" }).where(eq(schema.deals.companyId, one.id));
+
+    const changed = leads.replace("Waiting on budget", "Waiting on sign-off");
+    const report = await importNotion(db, { "reference-clients": changed }, { dryRun: false });
+    expect(report["reference-clients"]).toMatchObject({ created: 0, updated: 3 });
+
+    expect(await db.select().from(schema.deals)).toHaveLength(3);
+    expect(await db.select().from(schema.dealStageHistory)).toHaveLength(3);
+    const [dealOne] = await db.select().from(schema.deals).where(eq(schema.deals.companyId, one.id));
+    expect(dealOne.stage).toBe("NEGOTIATION");
+    expect(dealOne.currentBlock).toBe("Waiting on sign-off");
   });
 });
