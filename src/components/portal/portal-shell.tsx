@@ -1,3 +1,4 @@
+import { PreviewBanner } from "@/components/portal/preview-banner";
 import { SignOutButton } from "@/components/sign-out-button";
 
 type PortalShellProps = {
@@ -5,13 +6,16 @@ type PortalShellProps = {
   userName: string;
   title: string;
   subtitle?: string;
+  /** True when an admin is previewing this portal with demo data. */
+  previewing?: boolean;
   children: React.ReactNode;
 };
 
 /** Frame for the outside portals: a plain top bar and one column, nothing from the team dashboard. */
-export function PortalShell({ area, userName, title, subtitle, children }: PortalShellProps) {
+export function PortalShell({ area, userName, title, subtitle, previewing, children }: PortalShellProps) {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900">
+      {previewing ? <PreviewBanner area={area} /> : null}
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">

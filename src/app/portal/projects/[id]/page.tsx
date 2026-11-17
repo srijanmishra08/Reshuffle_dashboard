@@ -21,7 +21,7 @@ export default async function ClientProjectPage({ params }: { params: Promise<{ 
   return (
     <PortalShell
       area="Client portal"
-      userName={user.name}
+      userName={user.name} previewing={user.previewing}
       title={p.name}
       subtitle={`${p.startDate ? `Started ${day(p.startDate)}` : "Not started"}${p.dueDate ? ` · due ${day(p.dueDate)}` : ""}`}
     >

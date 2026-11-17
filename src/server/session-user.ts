@@ -13,6 +13,8 @@ export type AuthedUser = {
   role: Role;
   orgId: string;
   links: AccessLinks;
+  /** True when an admin is previewing an outside portal with demo data. */
+  previewing?: boolean;
 };
 
 const NO_LINKS: AccessLinks = { companyId: null, freelancerId: null, agencyId: null };

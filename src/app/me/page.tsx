@@ -16,7 +16,7 @@ export default async function FreelancerPage() {
 
   if (!result.ok) {
     return (
-      <PortalShell area="Freelancer" userName={user.name} title="Welcome">
+      <PortalShell area="Freelancer" userName={user.name} previewing={user.previewing} title="Welcome">
         <Card title="Your account is not set up yet">
           <Empty>{result.error}</Empty>
         </Card>
@@ -29,7 +29,7 @@ export default async function FreelancerPage() {
   const today = me.today;
 
   return (
-    <PortalShell area="Freelancer" userName={user.name} title={`Hello, ${me.freelancer.name}`} subtitle="Your tasks, projects and payouts.">
+    <PortalShell area="Freelancer" userName={user.name} previewing={user.previewing} title={`Hello, ${me.freelancer.name}`} subtitle="Your tasks, projects and payouts.">
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Open tasks" value={String(open.length)} />
         <Stat label="Workload" value={`${me.utilizationPct}%`} note="Active assignments" tone={me.utilizationPct > 100 ? "warn" : undefined} />

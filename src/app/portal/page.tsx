@@ -17,7 +17,7 @@ export default async function ClientPortalPage() {
 
   if (!result.ok) {
     return (
-      <PortalShell area="Client portal" userName={user.name} title="Welcome">
+      <PortalShell area="Client portal" userName={user.name} previewing={user.previewing} title="Welcome">
         <Card title="Your account is not set up yet">
           <Empty>{result.error}</Empty>
         </Card>
@@ -30,7 +30,7 @@ export default async function ClientPortalPage() {
   const overdue = home.invoices.filter((i) => i.overdue).length;
 
   return (
-    <PortalShell area="Client portal" userName={user.name} title={home.company.name} subtitle="Your projects, invoices and anything waiting for you.">
+    <PortalShell area="Client portal" userName={user.name} previewing={user.previewing} title={home.company.name} subtitle="Your projects, invoices and anything waiting for you.">
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Active projects" value={String(open.length)} />
         <Stat label="Waiting for you" value={String(home.review.length)} note="Work to approve" tone={home.review.length > 0 ? "warn" : undefined} />
@@ -113,7 +113,7 @@ export default async function ClientPortalPage() {
                       <Pill tone={i.status === "PAID" ? "good" : i.overdue ? "warn" : "wait"}>{i.status === "PAID" ? "Paid" : i.overdue ? "Overdue" : i.status === "PARTIALLY_PAID" ? "Part paid" : "Due"}</Pill>
                     </td>
                     <td className={`${td} text-right`}>
-                      <a href={`/api/portal/client/invoices/${i.id}/pdf`} className="text-sm text-sky-700 hover:underline">PDF</a>
+                      {i.hasPdf ? <a href={`/api/portal/client/invoices/${i.id}/pdf`} className="text-sm text-sky-700 hover:underline">PDF</a> : null}
                     </td>
                   </tr>
                 ))}
@@ -134,7 +134,7 @@ export default async function ClientPortalPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Pill tone={s.status === "ACCEPTED" ? "good" : "wait"}>{s.status === "ACCEPTED" ? `Accepted ${day(s.acceptedAt)}` : "Sent"}</Pill>
-                  <a href={`/api/portal/client/scopes/${s.id}/pdf`} className="text-sm text-sky-700 hover:underline">PDF</a>
+                  {s.hasPdf ? <a href={`/api/portal/client/scopes/${s.id}/pdf`} className="text-sm text-sky-700 hover:underline">PDF</a> : null}
                 </div>
               </li>
             ))}

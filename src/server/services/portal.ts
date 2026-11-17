@@ -73,12 +73,13 @@ export async function getClientHome(db: Db, user: AuthedUser) {
         totalPaise: invoices.totalPaise,
         paidPaise: invoices.paidPaise,
         overdueAt: invoices.overdueAt,
+        hasPdf: sql<boolean>`${invoices.snapshotJson} is not null`,
       })
       .from(invoices)
       .where(and(eq(invoices.companyId, companyId), eq(invoices.orgId, ctx.orgId), inArray(invoices.status, ["ISSUED", "PARTIALLY_PAID", "PAID"])))
       .orderBy(desc(invoices.issueDate)),
     db
-      .select({ id: scopes.id, number: scopes.number, title: scopes.title, status: scopes.status, totalPaise: scopes.totalPaise, sentAt: scopes.sentAt, acceptedAt: scopes.acceptedAt })
+      .select({ id: scopes.id, number: scopes.number, title: scopes.title, status: scopes.status, totalPaise: scopes.totalPaise, sentAt: scopes.sentAt, acceptedAt: scopes.acceptedAt, hasPdf: sql<boolean>`${scopes.snapshotJson} is not null` })
       .from(scopes)
       .innerJoin(deals, eq(deals.id, scopes.dealId))
       .where(and(eq(deals.companyId, companyId), eq(scopes.orgId, ctx.orgId), inArray(scopes.status, ["SENT", "ACCEPTED"])))

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PreviewPanel } from "@/components/access/preview-panel";
 import { api, jsonBody } from "@/lib/api";
 import type { Company } from "@/lib/crm-types";
 import { roleLabels } from "@/lib/schemas/access";
@@ -85,6 +86,8 @@ export function AccessManager() {
     <div className="space-y-5">
       {error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : null}
       {notice ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p> : null}
+
+      <PreviewPanel />
 
       <section className={card}>
         <h3 className="text-sm font-semibold text-slate-800">Give someone access</h3>
