@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
 import { invoices } from "./billing";
@@ -44,6 +44,10 @@ export const uploadedDocuments = pgTable(
     blobKey: text("blob_key").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
     sha256: text("sha256").notNull(),
+    /** What the software sent about the invoice: client, line items and so on. Used to record it as a dashboard invoice. */
+    details: jsonb("details").$type<Record<string, unknown>>(),
+    /** Why the invoice was not recorded automatically, as a short code, or null. */
+    recordNote: text("record_note"),
     /** The dashboard invoice with the same number, when there is one. */
     invoiceId: text("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
     keyId: text("key_id").references(() => ingestKeys.id, { onDelete: "set null" }),

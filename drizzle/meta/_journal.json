@@ -162,6 +162,13 @@
       "when": 1794914324967,
       "tag": "0022_cute_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794917583534,
+      "tag": "0023_pink_whiplash",
+      "breakpoints": true
     }
   ]
 }

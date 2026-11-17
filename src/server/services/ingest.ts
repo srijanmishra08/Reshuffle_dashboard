@@ -9,6 +9,9 @@ import { supabaseStorage, type Storage } from "@/server/lib/storage";
 import { logActivity } from "@/server/services/activity";
 import type { ServiceContext } from "@/server/services/companies";
 import { uploadedDocTypeValues } from "@/server/db/schema/ingest";
+import { recordIssueMessages, uploadedInvoiceDetailsSchema, type RecordIssue } from "@/lib/schemas/ingest";
+import { createCompany } from "@/server/services/companies";
+import { createInvoice, deleteDraftInvoice, issueInvoice } from "@/server/services/invoices";
 
 const { ingestKeys, uploadedDocuments, invoices, attachments, companies } = schema;
 
@@ -108,6 +111,116 @@ export function safeFilename(name: string, fallback: string): string {
 
 /* -------------------------------- documents ------------------------------- */
 
+type UploadRow = typeof uploadedDocuments.$inferSelect;
+
+/** A plain amount typed in the form ("1000", "12.50") as paise, or null. */
+function plainPaise(text: string): number | null {
+  const t = text.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
+  const paise = toPaise(t);
+  return paise > 0 && paise <= 2_000_000_000 ? paise : null;
+}
+
+const VALID_GSTIN = /^[0-9A-Z]{15}$/;
+
+/** Writes the issue on the upload so the page can say why, and returns it. */
+async function noteIssue(db: Db, uploadId: string, issue: RecordIssue) {
+  await db.update(uploadedDocuments).set({ recordNote: issue }).where(eq(uploadedDocuments.id, uploadId));
+  return { recorded: false as const, issue };
+}
+
+/**
+ * Records an uploaded invoice as an issued invoice in the dashboard, keeping the number it already carries. The dashboard works
+ * out the tax itself from the line items and only records the invoice if its total agrees with the PDF (within the rupee
+ * rounding), so a typing slip cannot create a wrong invoice. The client must already exist unless `createClient` is set: a
+ * test invoice with a made-up client therefore never creates a client or an invoice by itself.
+ */
+async function recordFromUpload(db: Db, ctx: ServiceContext, upload: UploadRow, opts: { createClient: boolean }) {
+  const details = uploadedInvoiceDetailsSchema.safeParse(upload.details);
+  if (!details.success) return noteIssue(db, upload.id, "NO_DETAILS");
+  const d = details.data;
+  if (!upload.number.trim()) return noteIssue(db, upload.id, "NO_NUMBER");
+  if (!upload.documentDate) return noteIssue(db, upload.id, "NO_DATE");
+
+  const taken = await db
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(and(eq(invoices.orgId, ctx.orgId), sql`lower(${invoices.number}) = lower(${upload.number})`))
+    .limit(1);
+  if (taken.length > 0) return noteIssue(db, upload.id, "NUMBER_USED");
+
+  const lines = d.items.map((i) => ({ description: i.description, ratePaise: plainPaise(i.amount) }));
+  if (lines.some((l) => l.ratePaise === null)) return noteIssue(db, upload.id, "BAD_ITEMS");
+
+  const gstin = d.clientGstin.toUpperCase().replace(/\s+/g, "");
+  const byName = sql`(lower(${companies.name}) = lower(${d.clientName}) or lower(coalesce(${companies.legalName}, '')) = lower(${d.clientName}))`;
+  const found = (
+    await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.orgId, ctx.orgId), sql`${companies.archivedAt} is null`, VALID_GSTIN.test(gstin) ? or(eq(companies.gstin, gstin), byName) : byName))
+      .limit(1)
+  )[0];
+  let companyId = found?.id;
+  if (!companyId) {
+    if (!opts.createClient) return noteIssue(db, upload.id, "NEW_CLIENT");
+    const made = await createCompany(db, ctx, {
+      name: d.clientName,
+      gstin: VALID_GSTIN.test(gstin) ? gstin : null,
+      stateCode: VALID_GSTIN.test(gstin) ? gstin.slice(0, 2) : null,
+      address: d.clientAddress || null,
+      lifecycle: "ACTIVE",
+      source: "Invoice software",
+    });
+    if (!made.ok) return noteIssue(db, upload.id, "NEW_CLIENT");
+    companyId = made.data.id;
+  }
+
+  const draft = await createInvoice(db, ctx, {
+    companyId,
+    issueDate: upload.documentDate,
+    notes: d.notes || null,
+    items: lines.map((l) => ({ description: l.description, quantity: 1, ratePaise: l.ratePaise as number, taxable: true })),
+  });
+  if (!draft.ok) return noteIssue(db, upload.id, /organisation state/i.test(draft.error) ? "NO_SETTINGS" : "BAD_ITEMS");
+
+  if (upload.amountPaise === null || Math.abs(draft.data.totalPaise - upload.amountPaise) > 100) {
+    await deleteDraftInvoice(db, ctx, draft.data.id);
+    return noteIssue(db, upload.id, "TOTAL_MISMATCH");
+  }
+
+  let issued;
+  try {
+    issued = await issueInvoice(db, ctx, draft.data.id, { idempotencyKey: `upload-${upload.id}`, issueDate: upload.documentDate }, { externalNumber: upload.number });
+  } catch {
+    // The only way this fails after the check above is another invoice taking the number at the same moment.
+    await deleteDraftInvoice(db, ctx, draft.data.id);
+    return noteIssue(db, upload.id, "NUMBER_USED");
+  }
+  if (!issued.ok) {
+    await deleteDraftInvoice(db, ctx, draft.data.id);
+    return noteIssue(db, upload.id, "NUMBER_USED");
+  }
+
+  await db.insert(attachments).values({ orgId: ctx.orgId, entityType: "INVOICE", entityId: draft.data.id, blobKey: upload.blobKey, filename: upload.filename, mime: "application/pdf", size: upload.sizeBytes, createdBy: null });
+  await db.update(uploadedDocuments).set({ invoiceId: draft.data.id, recordNote: null }).where(eq(uploadedDocuments.id, upload.id));
+  await logActivity({ actorId: ctx.userId, action: "document.recorded_as_invoice", module: "finance", entityType: "invoice", entityId: draft.data.id, metadata: { uploadId: upload.id, number: upload.number } }, db);
+  return { recorded: true as const, invoiceId: draft.data.id };
+}
+
+/** The "Record as invoice" button: tries again, and creates the client if asked to. */
+export async function recordUploadedInvoice(db: Db, ctx: ServiceContext, id: string, raw: unknown) {
+  const parsed = z.object({ createClient: z.boolean().default(false) }).safeParse(raw ?? {});
+  if (!parsed.success) return fail("VALIDATION", "Invalid request");
+  const doc = await findDocument(db, ctx, id);
+  if (!doc) return fail("NOT_FOUND", "Document not found");
+  if (doc.docType !== "INVOICE") return fail("VALIDATION", "Only invoices can be recorded");
+  if (doc.invoiceId) return fail("CONFLICT", "This PDF is already attached to a dashboard invoice");
+  const result = await recordFromUpload(db, ctx, doc, { createClient: parsed.data.createClient });
+  if (!result.recorded) return fail("CONFLICT", recordIssueMessages[result.issue], { issue: result.issue });
+  return ok({ invoiceId: result.invoiceId });
+}
+
 const metaSchema = z.object({
   docType: z.enum(uploadedDocTypeValues),
   number: z.string().trim().max(100).default(""),
@@ -115,6 +228,8 @@ const metaSchema = z.object({
   amountText: z.string().trim().max(60).default(""),
   dateText: z.string().trim().max(40).default(""),
   filename: z.string().trim().max(200).default(""),
+  /** JSON with the client, line items and so on, from the invoice software. Optional. */
+  invoiceJson: z.string().max(40_000).default(""),
 });
 
 /**
@@ -141,7 +256,7 @@ export async function ingestDocument(
     .from(uploadedDocuments)
     .where(and(eq(uploadedDocuments.orgId, key.orgId), eq(uploadedDocuments.sha256, hash)))
     .limit(1);
-  if (existing[0]) return ok({ id: existing[0].id, duplicate: true, invoiceLinked: false });
+  if (existing[0]) return ok({ id: existing[0].id, duplicate: true, invoiceLinked: false, recorded: false, recordIssue: null as RecordIssue | null });
 
   const m = meta.data;
   const blobPath = `uploads/${hash}.pdf`;
@@ -170,6 +285,15 @@ export async function ingestDocument(
     invoiceId = sameTotal || sameClient ? candidate.id : null;
   }
   const filename = safeFilename(m.filename || m.number, `${m.docType.toLowerCase()}-${hash.slice(0, 8)}`);
+  let details: Record<string, unknown> | null = null;
+  if (m.docType === "INVOICE" && m.invoiceJson) {
+    try {
+      const parsedDetails = uploadedInvoiceDetailsSchema.safeParse(JSON.parse(m.invoiceJson));
+      details = parsedDetails.success ? parsedDetails.data : null;
+    } catch {
+      details = null;
+    }
+  }
   const [row] = await db
     .insert(uploadedDocuments)
     .values({
@@ -184,14 +308,24 @@ export async function ingestDocument(
       sizeBytes: bytes.length,
       sha256: hash,
       invoiceId,
+      details,
       keyId: key.id,
     })
-    .returning({ id: uploadedDocuments.id });
+    .returning();
   if (invoiceId) {
     await db.insert(attachments).values({ orgId: key.orgId, entityType: "INVOICE", entityId: invoiceId, blobKey: `${BUCKET}/${blobPath}`, filename, mime: "application/pdf", size: bytes.length, createdBy: null });
   }
   await logActivity({ action: "document.uploaded", module: "finance", entityType: "uploaded_document", entityId: row.id, metadata: { docType: m.docType, number: m.number, linkedToInvoice: Boolean(invoiceId) } }, db);
-  return ok({ id: row.id, duplicate: false, invoiceLinked: Boolean(invoiceId) });
+
+  // An invoice that matches no dashboard invoice is recorded as a new one, when it can be done safely.
+  let recorded = false;
+  let recordIssue: RecordIssue | null = null;
+  if (m.docType === "INVOICE" && !invoiceId) {
+    const result = await recordFromUpload(db, { orgId: key.orgId, userId: "invoice-software" }, row, { createClient: false });
+    recorded = result.recorded;
+    recordIssue = result.recorded ? null : result.issue;
+  }
+  return ok({ id: row.id, duplicate: false, invoiceLinked: Boolean(invoiceId) || recorded, recorded, recordIssue });
 }
 
 const listQuerySchema = z.object({
@@ -223,6 +357,8 @@ export async function listUploadedDocuments(db: Db, ctx: ServiceContext, rawQuer
       sizeBytes: uploadedDocuments.sizeBytes,
       createdAt: uploadedDocuments.createdAt,
       invoiceId: uploadedDocuments.invoiceId,
+      recordNote: uploadedDocuments.recordNote,
+      canRecord: sql<boolean>`(${uploadedDocuments.details} is not null and ${uploadedDocuments.invoiceId} is null and ${uploadedDocuments.docType} = 'INVOICE')`,
       companyId: companies.id,
     })
     .from(uploadedDocuments)

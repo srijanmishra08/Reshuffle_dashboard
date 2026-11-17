@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   const result = await ingestDocument(
     db,
     key,
-    { docType: text("docType"), number: text("number"), partyName: text("partyName"), amountText: text("amountText"), dateText: text("dateText"), filename: text("filename") || file.name },
+    { docType: text("docType"), number: text("number"), partyName: text("partyName"), amountText: text("amountText"), dateText: text("dateText"), filename: text("filename") || file.name, invoiceJson: text("invoiceJson") },
     Buffer.from(await file.arrayBuffer())
   );
   if (!result.ok) return reply(origin, { error: result.error }, result.code === "VALIDATION" ? 400 : 500);

@@ -368,7 +368,7 @@ describe("invoice software upload", () => {
     return made.data;
   }
 
-  async function upload(opts: { token?: string | null; fromOrigin?: string | null; bytes?: Buffer | null; docType?: string; contentLength?: number } = {}) {
+  async function upload(opts: { token?: string | null; fromOrigin?: string | null; bytes?: Buffer | null; docType?: string; contentLength?: number; invoiceJson?: string } = {}) {
     const { POST } = (await loaders[file]()) as { POST: Handler };
     const form = new FormData();
     if (opts.bytes !== null) form.set("file", new File([new Uint8Array(opts.bytes ?? pdfBytes("route test"))], "x.pdf", { type: "application/pdf" }));
@@ -377,6 +377,7 @@ describe("invoice software upload", () => {
     form.set("partyName", "Route Client");
     form.set("amountText", "₹500.00");
     form.set("dateText", "1 June 2026");
+    if (opts.invoiceJson) form.set("invoiceJson", opts.invoiceJson);
     const headers: Record<string, string> = {};
     if (opts.token !== null) headers.authorization = `Bearer ${opts.token}`;
     if (opts.fromOrigin !== null) headers.origin = opts.fromOrigin ?? origin;
@@ -430,6 +431,14 @@ describe("invoice software upload", () => {
     expect((await upload({ token, bytes: null })).status).toBe(400);
     expect((await upload({ token, docType: "SALARY_SLIP", bytes: pdfBytes("slip") })).status).toBe(400);
     expect((await upload({ token, contentLength: 50 * 1024 * 1024 })).status).toBe(413);
+  });
+
+  it("tells the invoice software when an invoice could not be recorded, and why", async () => {
+    const { token } = await makeKey("Details");
+    const json = JSON.stringify({ clientName: "Nobody Known Ltd", items: [{ description: "Work", amount: "500" }] });
+    const res = await upload({ token, bytes: pdfBytes("with details"), invoiceJson: json });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { data: { recorded: boolean; recordIssue: string } }).data).toMatchObject({ recorded: false, recordIssue: "NEW_CLIENT" });
   });
 
   it("gives no CORS permission to other websites", async () => {

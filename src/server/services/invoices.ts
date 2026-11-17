@@ -15,7 +15,7 @@ import { newId } from "@/lib/ids";
 import { fail, ok, type Result } from "@/server/lib/result";
 import { computeTax } from "@/server/services/gst";
 import { logActivity } from "@/server/services/activity";
-import { nextNumber } from "@/server/services/numbering";
+import { financialYear, nextNumber } from "@/server/services/numbering";
 import type { ServiceContext } from "@/server/services/companies";
 
 const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings, ledgerEntries, attachments } = schema;
@@ -357,7 +357,11 @@ export async function receivables(db: Db, orgId: string) {
   };
 }
 
-export async function issueInvoice(db: Db, ctx: ServiceContext, id: string, raw: unknown) {
+/**
+ * Issues a draft. The number comes from the organisation's own series, unless `opts.externalNumber` is given: that is for
+ * an invoice that was already issued elsewhere (the invoice software), which keeps the number it already carries.
+ */
+export async function issueInvoice(db: Db, ctx: ServiceContext, id: string, raw: unknown, opts: { externalNumber?: string } = {}) {
   const parsed = issueInvoiceSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION", "Invalid request", parsed.error.flatten());
   const { idempotencyKey, issueDate: issueDateInput } = parsed.data;
@@ -395,12 +399,10 @@ export async function issueInvoice(db: Db, ctx: ServiceContext, id: string, raw:
       .returning({ id: invoices.id });
     if (claimed.length === 0) return false;
 
-    const allocated = await nextNumber(tx, {
-      orgId: ctx.orgId,
-      docType: "INVOICE",
-      date: new Date(`${issueDate}T12:00:00+05:30`),
-      fyStartMonth: org.fyStartMonth,
-    });
+    const issuedOn = new Date(`${issueDate}T12:00:00+05:30`);
+    const allocated = opts.externalNumber
+      ? { number: opts.externalNumber, fy: financialYear(issuedOn, org.fyStartMonth) }
+      : await nextNumber(tx, { orgId: ctx.orgId, docType: "INVOICE", date: issuedOn, fyStartMonth: org.fyStartMonth });
 
     const snapshot = {
       type: "INVOICE",
