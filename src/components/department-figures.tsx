@@ -8,7 +8,7 @@ type Overview = {
   pipeline: { openCount: number; openValuePaise: number; wonThisMonthCount: number; wonThisMonthPaise: number; winRatePercent: number | null };
   receivables: { outstandingPaise: number; openCount: number; overduePaise: number; overdueCount: number };
   clients: { active: number };
-  projects: { active: number; onHold: number; atRisk: number };
+  projects: { active: number; onHold: number; atRisk: number; tasksOverdue: number; inClientReview: number };
   cash: { incomePaise: number; expensePaise: number };
   followUps: unknown[];
   meetings: unknown[];
@@ -43,6 +43,7 @@ function figuresFor(key: string, o: Overview): Figure[] {
         { label: "Active projects", value: String(o.projects.active) },
         { label: "On hold", value: String(o.projects.onHold) },
         { label: "At risk", value: String(o.projects.atRisk), note: "Milestones past due", warn: o.projects.atRisk > 0 },
+        { label: "Overdue tasks", value: String(o.projects.tasksOverdue), note: `${o.projects.inClientReview} waiting on clients`, warn: o.projects.tasksOverdue > 0 },
       ];
     default:
       return [];

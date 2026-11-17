@@ -20,7 +20,7 @@ type Overview = {
   };
   receivables: { outstandingPaise: number; openCount: number; overduePaise: number; overdueCount: number };
   clients: { active: number };
-  projects: { active: number; onHold: number; atRisk: number };
+  projects: { active: number; onHold: number; atRisk: number; tasksOverdue: number; inClientReview: number };
   cash: { incomePaise: number; expensePaise: number };
   followUps: { id: string; companyId: string; companyName: string; nextAction: string | null; nextActionAt: string | null }[];
   meetings: { id: string; title: string; at: string; companyId: string | null; companyName: string | null }[];
@@ -93,8 +93,13 @@ export function OverviewDashboard() {
     {
       title: "Active projects",
       value: String(data.projects.active),
-      trend: data.projects.atRisk > 0 ? `${data.projects.atRisk} with overdue milestones` : `${data.projects.onHold} on hold`,
-      tone: data.projects.atRisk > 0 ? "warn" : "good",
+      trend:
+        data.projects.atRisk > 0 || data.projects.tasksOverdue > 0
+          ? [data.projects.atRisk > 0 ? `${data.projects.atRisk} with late milestones` : "", data.projects.tasksOverdue > 0 ? `${data.projects.tasksOverdue} overdue tasks` : ""].filter(Boolean).join(" · ")
+          : data.projects.inClientReview > 0
+            ? `${data.projects.inClientReview} tasks with clients for review`
+            : `${data.projects.onHold} on hold`,
+      tone: data.projects.atRisk > 0 || data.projects.tasksOverdue > 0 ? "warn" : "good",
     },
   ];
 

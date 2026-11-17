@@ -36,6 +36,7 @@ type View = {
     availability: string | null;
   };
   assignments: Assignment[];
+  tasks: { id: string; title: string; status: string; dueDate: string | null; projectId: string; projectName: string }[];
   utilizationPct: number;
   payouts: Payout[];
   pendingPaise: number;
@@ -236,6 +237,28 @@ export function FreelancerDetail({ id }: { id: string }) {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className={card}>
+        <h3 className="text-sm font-semibold text-slate-800">Tasks assigned</h3>
+        {view.tasks.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No tasks assigned. Assign them on a project&apos;s task board.</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-slate-100 text-sm">
+            {view.tasks.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-2 py-2">
+                <span>
+                  <span className="font-medium text-slate-900">{t.title}</span>{" "}
+                  <Link href={`/projects/${t.projectId}`} className="text-slate-500 hover:underline">{t.projectName}</Link>
+                </span>
+                <span className="text-slate-600">
+                  {t.dueDate ? `due ${t.dueDate} · ` : ""}
+                  {t.status.replace(/_/g, " ").toLowerCase()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className={card}>

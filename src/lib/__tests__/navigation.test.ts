@@ -40,6 +40,8 @@ describe("navigation", () => {
   it("places a page in its department, including pages under it", () => {
     expect(locate("/crm").department?.key).toBe("crm");
     expect(locate("/crm/abc123").item?.href).toBe("/crm");
+    expect(locate("/crm/projects").item?.title).toBe("Client projects");
+    expect(locate("/crm/projects").department?.key).toBe("crm");
     expect(locate("/invoices/new").department?.key).toBe("finance");
     expect(locate("/projects/xyz").department?.key).toBe("delivery");
     expect(locate("/freelancers/xyz").department?.key).toBe("delivery");

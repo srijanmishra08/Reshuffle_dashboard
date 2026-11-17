@@ -15,7 +15,7 @@ import { logActivity } from "@/server/services/activity";
 import type { ServiceContext } from "@/server/services/companies";
 import { todayIst } from "@/server/services/invoices";
 
-const { legacyFreelancers, freelancerAssignments, payouts, deliveryProjects, ledgerEntries, financePlans } = schema;
+const { legacyFreelancers, freelancerAssignments, payouts, deliveryProjects, ledgerEntries, financePlans, projectTasks } = schema;
 
 function audit(db: Db, ctx: ServiceContext, action: string, entityType: string, id: string, metadata?: Record<string, unknown>) {
   return logActivity({ actorId: ctx.userId, action, module: "freelancers", entityType, entityId: id, metadata }, db);
@@ -233,7 +233,7 @@ export async function getFreelancerTeamView(db: Db, ctx: ServiceContext, freelan
   const freelancer = rows[0];
   if (!freelancer) return fail("NOT_FOUND", "Freelancer not found");
 
-  const [assignments, payoutRows] = await Promise.all([
+  const [assignments, payoutRows, tasks] = await Promise.all([
     db
       .select({
         id: freelancerAssignments.id,
@@ -256,6 +256,22 @@ export async function getFreelancerTeamView(db: Db, ctx: ServiceContext, freelan
       .leftJoin(deliveryProjects, eq(deliveryProjects.id, payouts.projectId))
       .where(and(eq(payouts.freelancerId, freelancerId), eq(payouts.orgId, ctx.orgId)))
       .orderBy(desc(payouts.createdAt)),
+    // Tasks assigned to this freelancer. No budgets: the same view is shown to the freelancer.
+    db
+      .select({
+        id: projectTasks.id,
+        title: projectTasks.title,
+        description: projectTasks.description,
+        status: projectTasks.status,
+        priority: projectTasks.priority,
+        dueDate: projectTasks.dueDate,
+        projectId: projectTasks.projectId,
+        projectName: deliveryProjects.name,
+      })
+      .from(projectTasks)
+      .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
+      .where(and(eq(projectTasks.assigneeId, freelancerId), eq(projectTasks.orgId, ctx.orgId)))
+      .orderBy(asc(projectTasks.dueDate), asc(projectTasks.createdAt)),
   ]);
 
   const sum = (status: string) => payoutRows.filter((p) => p.status === status).reduce((s, p) => s + p.amountPaise, 0);
@@ -274,6 +290,7 @@ export async function getFreelancerTeamView(db: Db, ctx: ServiceContext, freelan
     /** Sum of allocation across active assignments; above 100 means overbooked. */
     utilizationPct: assignments.filter((a) => a.status === "ACTIVE").reduce((s, a) => s + a.allocationPct, 0),
     payouts: payoutRows,
+    tasks,
     pendingPaise: sum("PENDING"),
     paidPaise: sum("PAID"),
   });

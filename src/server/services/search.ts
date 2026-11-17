@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import { ok } from "@/server/lib/result";
@@ -6,7 +6,7 @@ import type { ServiceContext } from "@/server/services/companies";
 import { listDueFollowUps } from "@/server/services/interactions";
 import { todayIst } from "@/server/services/invoices";
 
-const { companies, contacts, deals, invoices, deliveryProjects, docs, legacyFreelancers, scopes, payouts, projectMilestones } =
+const { companies, contacts, deals, invoices, deliveryProjects, docs, legacyFreelancers, scopes, payouts, projectMilestones, projectTasks, questionnaires } =
   schema;
 
 export type SearchHit = { type: string; id: string; title: string; subtitle: string; href: string };
@@ -24,7 +24,7 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
   if (query.length < 2) return ok([] as SearchHit[]);
   const p = likePattern(query);
 
-  const [companyRows, contactRows, dealRows, invoiceRows, projectRows, docRows, freelancerRows] = await Promise.all([
+  const [companyRows, contactRows, dealRows, invoiceRows, projectRows, docRows, freelancerRows, taskRows, scopeRows, formRows] = await Promise.all([
     db
       .select({ id: companies.id, name: companies.name, lifecycle: companies.lifecycle })
       .from(companies)
@@ -72,6 +72,22 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
       .from(legacyFreelancers)
       .where(or(ilike(legacyFreelancers.freelancer, p), ilike(legacyFreelancers.skill, p)))
       .limit(PER_TYPE),
+    db
+      .select({ id: projectTasks.id, title: projectTasks.title, status: projectTasks.status, projectId: projectTasks.projectId, projectName: deliveryProjects.name })
+      .from(projectTasks)
+      .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
+      .where(and(eq(projectTasks.orgId, ctx.orgId), ilike(projectTasks.title, p)))
+      .limit(PER_TYPE),
+    db
+      .select({ id: scopes.id, dealId: scopes.dealId, title: scopes.title, number: scopes.number, status: scopes.status })
+      .from(scopes)
+      .where(and(eq(scopes.orgId, ctx.orgId), or(ilike(scopes.title, p), ilike(scopes.number, p))))
+      .limit(PER_TYPE),
+    db
+      .select({ id: questionnaires.id, title: questionnaires.title, status: questionnaires.status })
+      .from(questionnaires)
+      .where(and(eq(questionnaires.orgId, ctx.orgId), ilike(questionnaires.title, p)))
+      .limit(PER_TYPE),
   ]);
 
   const hits: SearchHit[] = [
@@ -94,6 +110,21 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
       subtitle: r.skill ?? "",
       href: `/freelancers/${r.id}`,
     })),
+    ...taskRows.map((r) => ({
+      type: "Task",
+      id: r.id,
+      title: r.title,
+      subtitle: `${r.projectName} · ${r.status.replace("_", " ").toLowerCase()}`,
+      href: `/projects/${r.projectId}`,
+    })),
+    ...scopeRows.map((r) => ({
+      type: "Scope",
+      id: r.id,
+      title: r.title,
+      subtitle: `${r.number ?? "Draft"} · ${r.status.toLowerCase()}`,
+      href: `/sales/${r.dealId}/scopes/${r.id}`,
+    })),
+    ...formRows.map((r) => ({ type: "Form", id: r.id, title: r.title, subtitle: r.status.toLowerCase(), href: `/questionnaires/${r.id}` })),
   ];
   return ok(hits);
 }
@@ -111,7 +142,7 @@ export async function listNotices(db: Db, ctx: ServiceContext, opts: { includeBi
   const today = todayIst(now);
   const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
 
-  const [overdue, followUps, accepted, lateMilestones, duePayouts] = await Promise.all([
+  const [overdue, followUps, accepted, lateMilestones, duePayouts, reviewTasks, lateTasks] = await Promise.all([
     opts.includeBilling
       ? db
           .select({ id: invoices.id, number: invoices.number, dueDate: invoices.dueDate, companyName: companies.name })
@@ -150,6 +181,25 @@ export async function listNotices(db: Db, ctx: ServiceContext, opts: { includeBi
           .where(and(eq(payouts.orgId, ctx.orgId), eq(payouts.status, "PENDING"), isNotNull(payouts.dueDate), lte(payouts.dueDate, today)))
           .limit(20)
       : Promise.resolve([]),
+    db
+      .select({ id: projectTasks.id, title: projectTasks.title, projectId: deliveryProjects.id, projectName: deliveryProjects.name })
+      .from(projectTasks)
+      .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
+      .where(and(eq(projectTasks.orgId, ctx.orgId), eq(projectTasks.status, "CLIENT_REVIEW")))
+      .limit(20),
+    db
+      .select({ id: projectTasks.id, title: projectTasks.title, dueDate: projectTasks.dueDate, projectId: deliveryProjects.id, projectName: deliveryProjects.name })
+      .from(projectTasks)
+      .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
+      .where(
+        and(
+          eq(projectTasks.orgId, ctx.orgId),
+          inArray(projectTasks.status, ["BACKLOG", "TODO", "IN_PROGRESS", "REVISION"]),
+          isNotNull(projectTasks.dueDate),
+          lt(projectTasks.dueDate, today)
+        )
+      )
+      .limit(20),
   ]);
 
   const notices: Notice[] = [
@@ -176,6 +226,22 @@ export async function listNotices(db: Db, ctx: ServiceContext, opts: { includeBi
       detail: m.dueDate ? `Due ${m.dueDate}` : "",
       href: `/projects/${m.projectId}`,
       tone: "warn" as const,
+    })),
+    ...lateTasks.map((t) => ({
+      id: `task-${t.id}`,
+      kind: "Task overdue",
+      title: `${t.projectName}: ${t.title}`,
+      detail: t.dueDate ? `Due ${t.dueDate}` : "",
+      href: `/projects/${t.projectId}`,
+      tone: "warn" as const,
+    })),
+    ...reviewTasks.map((t) => ({
+      id: `review-${t.id}`,
+      kind: "Waiting on client",
+      title: `${t.projectName}: ${t.title}`,
+      detail: "In client review",
+      href: `/projects/${t.projectId}`,
+      tone: "info" as const,
     })),
     ...(followUps.ok ? followUps.data : []).map((f) => ({
       id: `fu-${f.id}`,
