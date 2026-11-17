@@ -46,6 +46,16 @@ vi.mock("@/server/session-user", async (importOriginal) => {
           },
   };
 });
+vi.mock("@/server/lib/storage", () => {
+  const files = new Map<string, Buffer>();
+  return {
+    supabaseStorage: {
+      put: async (bucket: string, path: string, body: Buffer) => void files.set(`${bucket}/${path}`, body),
+      get: async (bucket: string, path: string) => files.get(`${bucket}/${path}`) ?? null,
+      remove: async (bucket: string, path: string) => void files.delete(`${bucket}/${path}`),
+    },
+  };
+});
 vi.mock("@/server/db/client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/server/db/client")>();
   return { ...original, getDb: () => state.db };
@@ -64,6 +74,8 @@ const PUBLIC = [
   "/src/app/api/health/",
   "/src/app/api/cron/",
   "/src/app/api/p/",
+  // Called by the invoice software with a key; tested on its own below.
+  "/src/app/api/ingest/",
 ];
 const ADMIN_ONLY_FILES = [
   "/src/app/api/settings/route.ts",
@@ -73,6 +85,9 @@ const ADMIN_ONLY_FILES = [
   "/src/app/api/agencies/[id]/members/route.ts",
   "/src/app/api/preview/route.ts",
   "/src/app/api/demo/route.ts",
+  "/src/app/api/ingest-keys/route.ts",
+  "/src/app/api/ingest-keys/[id]/route.ts",
+  "/src/app/api/uploaded-documents/[id]/route.ts",
 ];
 // Outside people (clients, partner agencies, freelancers) never reach team routes.
 const OUTSIDERS = ["FREELANCER", "CLIENT", "AGENCY"];
@@ -338,5 +353,95 @@ describe("portal preview", () => {
     signIn("ADMIN");
     const { GET } = (await loaders[companiesFile]()) as { GET: Handler };
     expect((await call(GET, "GET", companiesFile)).status).toBe(200);
+  });
+});
+
+describe("invoice software upload", () => {
+  const file = "/src/app/api/ingest/documents/route.ts";
+  const origin = "https://invoice-eight-neon.vercel.app";
+  const pdfBytes = (text: string) => Buffer.from(`%PDF-1.4\n${text}\n%%EOF`);
+
+  async function makeKey(label = "Test key") {
+    const { createIngestKey } = await import("@/server/services/ingest");
+    const made = await createIngestKey(db, { orgId: "default", userId: "admin" }, { label });
+    if (!made.ok) throw new Error("setup failed");
+    return made.data;
+  }
+
+  async function upload(opts: { token?: string | null; fromOrigin?: string | null; bytes?: Buffer | null; docType?: string; contentLength?: number } = {}) {
+    const { POST } = (await loaders[file]()) as { POST: Handler };
+    const form = new FormData();
+    if (opts.bytes !== null) form.set("file", new File([new Uint8Array(opts.bytes ?? pdfBytes("route test"))], "x.pdf", { type: "application/pdf" }));
+    form.set("docType", opts.docType ?? "INVOICE");
+    form.set("number", "ROUTE/1");
+    form.set("partyName", "Route Client");
+    form.set("amountText", "₹500.00");
+    form.set("dateText", "1 June 2026");
+    const headers: Record<string, string> = {};
+    if (opts.token !== null) headers.authorization = `Bearer ${opts.token}`;
+    if (opts.fromOrigin !== null) headers.origin = opts.fromOrigin ?? origin;
+    if (opts.contentLength) headers["content-length"] = String(opts.contentLength);
+    return POST(new NextRequest("http://localhost/api/ingest/documents", { method: "POST", body: form, headers }), { params: Promise.resolve({}) });
+  }
+
+  it("answers the browser's preflight for the invoice software only", async () => {
+    const { OPTIONS } = (await loaders[file]()) as { OPTIONS: Handler };
+    const ask = (from: string) => OPTIONS(new NextRequest("http://localhost/api/ingest/documents", { method: "OPTIONS", headers: { origin: from } }), { params: Promise.resolve({}) });
+    const ok = await ask(origin);
+    expect(ok.status).toBe(204);
+    expect(ok.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(ok.headers.get("access-control-allow-headers")).toContain("Authorization");
+    const denied = await ask("https://evil.example");
+    expect(denied.status).toBe(204);
+    expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("saves a PDF sent with a valid key, once, and lets the browser read the answer", async () => {
+    const { token } = await makeKey();
+    const first = await upload({ token });
+    expect(first.status).toBe(201);
+    expect(first.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(((await first.json()) as { data: { duplicate: boolean } }).data.duplicate).toBe(false);
+    const again = await upload({ token });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { data: { duplicate: boolean } }).data.duplicate).toBe(true);
+    const { listUploadedDocuments } = await import("@/server/services/ingest");
+    const listed = await listUploadedDocuments(db, { orgId: "default", userId: "x" }, { q: "ROUTE/1" });
+    expect(listed.ok && listed.data).toHaveLength(1);
+    expect(listed.ok && listed.data[0]).toMatchObject({ amountPaise: 50_000, documentDate: "2026-06-01", partyName: "Route Client" });
+  });
+
+  it("refuses a missing, wrong or revoked key, with the answer still readable by the invoice software", async () => {
+    const none = await upload({ token: null });
+    expect(none.status).toBe(401);
+    expect(none.headers.get("access-control-allow-origin")).toBe(origin);
+    expect((await upload({ token: "rsk_" + "a".repeat(43) })).status).toBe(401);
+    expect((await upload({ token: "garbage" })).status).toBe(401);
+    const { token, id } = await makeKey("To revoke");
+    expect((await upload({ token, bytes: pdfBytes("before revoke") })).status).toBe(201);
+    const { revokeIngestKey } = await import("@/server/services/ingest");
+    await revokeIngestKey(db, { orgId: "default", userId: "admin" }, id);
+    expect((await upload({ token, bytes: pdfBytes("after revoke") })).status).toBe(401);
+  });
+
+  it("refuses files that are not acceptable PDFs", async () => {
+    const { token } = await makeKey("Validation");
+    expect((await upload({ token, bytes: Buffer.from("not a pdf") })).status).toBe(400);
+    expect((await upload({ token, bytes: null })).status).toBe(400);
+    expect((await upload({ token, docType: "SALARY_SLIP", bytes: pdfBytes("slip") })).status).toBe(400);
+    expect((await upload({ token, contentLength: 50 * 1024 * 1024 })).status).toBe(413);
+  });
+
+  it("gives no CORS permission to other websites", async () => {
+    const { token } = await makeKey("Other origin");
+    const res = await upload({ token, fromOrigin: "https://evil.example", bytes: pdfBytes("other origin") });
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("is not available to the team API under the same key", async () => {
+    const { token } = await makeKey("Not a login");
+    const { GET } = (await loaders["/src/app/api/uploaded-documents/route.ts"]()) as { GET: Handler };
+    const res = await GET(new NextRequest("http://localhost/api/uploaded-documents", { headers: { authorization: `Bearer ${token}` } }), { params: Promise.resolve({}) });
+    expect(res.status).toBe(401);
   });
 });
