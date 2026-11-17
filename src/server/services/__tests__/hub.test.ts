@@ -41,6 +41,10 @@ beforeAll(async () => {
     { orgId: "default", companyId: otherCompanyId, status: "ISSUED", number: "RS/26-27/002", totalPaise: 9_000_00 },
   ]);
   await db.insert(schema.workOrders).values({ orgId: "default", companyId, projectId, status: "ISSUED", number: "WO/26-27/001" });
+  await db.insert(schema.letters).values([
+    { orgId: "default", companyId, status: "ISSUED", number: "RS/L/26-27/001", recipientName: "Fake Traders", subject: "Service Agreement: Website", body: "Terms" },
+    { orgId: "default", companyId: otherCompanyId, status: "DRAFT", recipientName: "Other", subject: "Other letter", body: "x" },
+  ]);
   const [form] = await db.insert(schema.questionnaires).values({ orgId: "default", companyId, title: "Onboarding form", questions: [], token: "t".repeat(32) }).returning();
   await db.insert(schema.questionnaireResponses).values([
     { orgId: "default", questionnaireId: form.id, questions: [], answers: {} },
@@ -64,6 +68,7 @@ describe("client hub", () => {
     expect(hub.scopes.map((s) => s.number)).toEqual(["SC/26-27/001"]);
     expect(hub.invoices).toHaveLength(2);
     expect(hub.workOrders.map((w) => w.number)).toEqual(["WO/26-27/001"]);
+    expect(hub.letters.map((l) => l.subject)).toEqual(["Service Agreement: Website"]);
     expect(hub.forms).toEqual([expect.objectContaining({ title: "Onboarding form", responses: 2 })]);
     expect(hub.access).toEqual([{ email: "client@example.test", hasSignedIn: false }]);
     expect(hub.billedPaise).toBe(30_000_00);
@@ -78,6 +83,7 @@ describe("client hub", () => {
     expect(hub.accessHidden).toBe(true);
     expect(hub.invoices).toEqual([]);
     expect(hub.workOrders).toEqual([]);
+    expect(hub.letters).toEqual([]);
     expect(hub.access).toEqual([]);
     expect(hub.billedPaise).toBe(0);
     expect(hub.deals).toHaveLength(1);

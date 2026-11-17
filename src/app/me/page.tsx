@@ -1,4 +1,5 @@
 import { PortalShell } from "@/components/portal/portal-shell";
+import { TaskComments } from "@/components/portal/task-comments";
 import { TaskControls } from "@/components/portal/task-controls";
 import { Card, Empty, Pill, Stat, TaskStatusPill, day, money, td, th } from "@/components/portal/ui";
 import { getDb } from "@/server/db/client";
@@ -16,7 +17,7 @@ export default async function FreelancerPage() {
 
   if (!result.ok) {
     return (
-      <PortalShell area="Freelancer" userName={user.name} previewing={user.previewing} title="Welcome">
+      <PortalShell area="Freelancer" userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly} title="Welcome">
         <Card title="Your account is not set up yet">
           <Empty>{result.error}</Empty>
         </Card>
@@ -29,7 +30,7 @@ export default async function FreelancerPage() {
   const today = me.today;
 
   return (
-    <PortalShell area="Freelancer" userName={user.name} previewing={user.previewing} title={`Hello, ${me.freelancer.name}`} subtitle="Your tasks, projects and payouts.">
+    <PortalShell area="Freelancer" userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly} title={`Hello, ${me.freelancer.name}`} subtitle="Your tasks, projects and payouts.">
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Open tasks" value={String(open.length)} />
         <Stat label="Workload" value={`${me.utilizationPct}%`} note="Active assignments" tone={me.utilizationPct > 100 ? "warn" : undefined} />
@@ -53,14 +54,24 @@ export default async function FreelancerPage() {
                     ) : null}
                   </p>
                   {t.description ? <p className="mt-1 text-sm text-stone-600">{t.description}</p> : null}
+                  {t.comments.length > 0 || !user.previewReadOnly ? (
+                    <details className="mt-2" open={t.status === "REVISION"}>
+                      <summary className="cursor-pointer text-xs font-medium text-stone-600 underline">
+                        {t.comments.length > 0 ? `Comments (${t.comments.length})` : "Add a comment"}
+                      </summary>
+                      <div className="mt-2">
+                        <TaskComments taskId={t.id} area="freelancer" comments={t.comments} readOnly={user.previewReadOnly} />
+                      </div>
+                    </details>
+                  ) : null}
                 </div>
                 {t.status === "REVISION" || finished(t.status) ? (
                   <div className="flex items-center gap-2">
                     <TaskStatusPill status={t.status} />
-                    {t.status === "REVISION" ? <TaskControls taskId={t.id} status={t.status} area="freelancer" /> : null}
+                    {t.status === "REVISION" ? <TaskControls taskId={t.id} status={t.status} area="freelancer" readOnly={user.previewReadOnly} /> : null}
                   </div>
                 ) : (
-                  <TaskControls taskId={t.id} status={t.status} area="freelancer" />
+                  <TaskControls taskId={t.id} status={t.status} area="freelancer" readOnly={user.previewReadOnly} />
                 )}
               </li>
             ))}

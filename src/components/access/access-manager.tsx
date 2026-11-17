@@ -87,7 +87,11 @@ export function AccessManager() {
       {error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : null}
       {notice ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p> : null}
 
-      <PreviewPanel />
+      <PreviewPanel
+        clients={companies.map((c) => ({ id: c.id, name: c.name }))}
+        freelancers={freelancers.map((f) => ({ id: f.id, name: f.freelancer }))}
+        agencies={agencies.map((a) => ({ id: a.id, name: a.name }))}
+      />
 
       <section className={card}>
         <h3 className="text-sm font-semibold text-slate-800">Give someone access</h3>

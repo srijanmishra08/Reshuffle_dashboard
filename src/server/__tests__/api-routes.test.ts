@@ -295,6 +295,25 @@ describe("portal preview", () => {
     expect((await call(GET, "GET", companiesFile)).status).toBe(200);
   });
 
+  it("previews a real client read-only, and refuses a record that does not exist", async () => {
+    const { createCompany } = await import("@/server/services/companies");
+    const made = await createCompany(db, { orgId: "default", userId: "staff" }, { name: "Real Preview Co" });
+    if (!made.ok) throw new Error("setup failed");
+    const startWith = async (body: unknown) => {
+      const { POST } = (await loaders[previewFile]()) as { POST: Handler };
+      return POST(new NextRequest("http://localhost/api/preview", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }), { params: Promise.resolve({}) });
+    };
+    signIn("ADMIN");
+    expect((await startWith({ as: "CLIENT", recordId: "no-such-company" })).status).toBe(404);
+    expect(state.cookies.rs_preview).toBeUndefined();
+    expect((await startWith({ as: "CLIENT", recordId: made.data.id })).status).toBe(200);
+    expect(state.cookies.rs_preview).toBe(`CLIENT:${made.data.id}`);
+    // Acting as that client, a change is refused (403) rather than being treated as a missing task (404).
+    expect((await clientRespond()).status).toBe(403);
+    signIn("MANAGER");
+    expect((await clientRespond()).status).toBe(403);
+  });
+
   it("refuses an unknown role and anyone who is not an admin", async () => {
     signIn("ADMIN");
     expect((await startPreview("MANAGER")).status).toBe(400);

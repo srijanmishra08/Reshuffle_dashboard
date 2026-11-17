@@ -15,6 +15,8 @@ export type AuthedUser = {
   links: AccessLinks;
   /** True when an admin is previewing an outside portal with demo data. */
   previewing?: boolean;
+  /** True when the preview shows a real account. Every change is refused. */
+  previewReadOnly?: boolean;
 };
 
 const NO_LINKS: AccessLinks = { companyId: null, freelancerId: null, agencyId: null };

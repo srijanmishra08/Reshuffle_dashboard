@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PortalShell } from "@/components/portal/portal-shell";
-import { ReviewActions } from "@/components/portal/review-actions";
-import { Card, Empty, Pill, ProgressBar, TaskStatusPill, day, money, td, th } from "@/components/portal/ui";
-import { taskStatuses, taskStatusLabels } from "@/lib/schemas/project-tasks";
+import { ClientTaskBoard } from "@/components/portal/client-task-board";
+import { Card, Empty, Pill, ProgressBar, day, money, td, th } from "@/components/portal/ui";
 import { getDb } from "@/server/db/client";
 import { requirePortalUser } from "@/server/portal-guard";
 import { getClientProject } from "@/server/services/portal";
@@ -21,7 +20,7 @@ export default async function ClientProjectPage({ params }: { params: Promise<{ 
   return (
     <PortalShell
       area="Client portal"
-      userName={user.name} previewing={user.previewing}
+      userName={user.name} previewing={user.previewing} readOnlyPreview={user.previewReadOnly}
       title={p.name}
       subtitle={`${p.startDate ? `Started ${day(p.startDate)}` : "Not started"}${p.dueDate ? ` · due ${day(p.dueDate)}` : ""}`}
     >
@@ -31,34 +30,8 @@ export default async function ClientProjectPage({ params }: { params: Promise<{ 
         <ProgressBar percent={p.progressPercent} label="Project progress" />
       </Card>
 
-      <Card title="Tasks">
-        {p.tasks.length === 0 ? (
-          <Empty>No tasks yet.</Empty>
-        ) : (
-          <div className="space-y-4">
-            {taskStatuses
-              .filter((s) => p.tasks.some((t) => t.status === s))
-              .map((s) => (
-                <div key={s}>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">{taskStatusLabels[s]}</h3>
-                  <ul className="mt-1 divide-y divide-stone-100">
-                    {p.tasks
-                      .filter((t) => t.status === s)
-                      .map((t) => (
-                        <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
-                          <div>
-                            <p className="text-sm font-medium text-stone-900">{t.title}</p>
-                            <p className="text-xs text-stone-500">{t.dueDate ? `Due ${day(t.dueDate)}` : "No due date"}</p>
-                            {t.description ? <p className="mt-1 text-sm text-stone-600">{t.description}</p> : null}
-                          </div>
-                          {s === "CLIENT_REVIEW" ? <ReviewActions taskId={t.id} /> : <TaskStatusPill status={t.status} />}
-                        </li>
-                      ))}
-                  </ul>
-                </div>
-              ))}
-          </div>
-        )}
+      <Card title="Task board" note="The team moves work along. Answer on cards in Waiting for you.">
+        {p.tasks.length === 0 ? <Empty>No tasks yet.</Empty> : <ClientTaskBoard tasks={p.tasks} today={p.today} readOnly={user.previewReadOnly} />}
       </Card>
 
       {p.milestones.length > 0 ? (

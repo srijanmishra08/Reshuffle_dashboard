@@ -58,4 +58,17 @@ export const portalTaskUpdateSchema = z
   })
   .refine((v) => v.status !== undefined || v.assigneeId !== undefined, { message: "Nothing to change" });
 
-export const clientTaskResponseSchema = z.object({ decision: z.enum(["APPROVE", "REVISE"]) });
+export const commentBody = z.string().trim().min(1, "Write a comment").max(2000, "Keep the comment under 2000 characters");
+
+/** The client's answer on work in review. Asking for changes needs a reason; approving may carry a note. */
+export const clientTaskResponseSchema = z
+  .object({
+    decision: z.enum(["APPROVE", "REVISE"]),
+    comment: z.string().trim().max(2000, "Keep the comment under 2000 characters").optional(),
+  })
+  .refine((v) => v.decision === "APPROVE" || (v.comment ?? "").length > 0, { message: "Tell the team what to change", path: ["comment"] });
+
+export const portalCommentSchema = z.object({ body: commentBody });
+
+/** A note from the team. Internal notes are hidden from the client. */
+export const teamCommentSchema = z.object({ body: commentBody, internal: z.boolean().default(false) });

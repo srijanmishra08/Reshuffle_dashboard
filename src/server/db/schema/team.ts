@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
 import { legacyFreelancers } from "./core";
@@ -140,4 +140,32 @@ export const agencyFreelancers = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("uq_agency_freelancers_freelancer").on(t.freelancerId), index("idx_agency_freelancers_agency").on(t.agencyId)]
+).enableRLS();
+
+export const taskCommentKindValues = ["COMMENT", "REVISION_REQUEST", "APPROVAL"] as const;
+export type TaskCommentKind = (typeof taskCommentKindValues)[number];
+export const commentAuthorValues = ["TEAM", "CLIENT", "FREELANCER", "AGENCY"] as const;
+export type CommentAuthor = (typeof commentAuthorValues)[number];
+
+/**
+ * The conversation on a task: the client's reason for asking for changes, replies from the team and the
+ * freelancer, and plain notes. `internal` notes are for the team and the people doing the work, never the client.
+ */
+export const taskComments = pgTable(
+  "task_comments",
+  {
+    id: text("id").primaryKey().$defaultFn(newId),
+    orgId: text("org_id").notNull().default("default"),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => projectTasks.id, { onDelete: "cascade" }),
+    authorRole: text("author_role").notNull(),
+    authorName: text("author_name").notNull().default(""),
+    authorUserId: text("author_user_id"),
+    kind: text("kind").notNull().default("COMMENT"),
+    body: text("body").notNull(),
+    internal: boolean("internal").notNull().default(false),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_task_comments_task").on(t.taskId, t.createdAt)]
 ).enableRLS();

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 
 /** Shown across the top of a portal while an admin is previewing it. Nothing in the preview is real. */
-export function PreviewBanner({ area }: { area: string }) {
+export function PreviewBanner({ area, readOnly = false }: { area: string; readOnly?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,7 +24,15 @@ export function PreviewBanner({ area }: { area: string }) {
     <div className="bg-amber-100 px-4 py-2 text-sm text-amber-950" role="status">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
         <span>
-          Previewing the <strong>{area.toLowerCase()}</strong> view with demo data. Nothing here is real, and you are still signed in as yourself.
+          {readOnly ? (
+            <>
+              Previewing a <strong>real {area.toLowerCase()}</strong> exactly as they see it. This is read-only: nothing can be changed. You are still signed in as yourself.
+            </>
+          ) : (
+            <>
+              Previewing the <strong>{area.toLowerCase()}</strong> view with demo data. Nothing here is real, and you are still signed in as yourself.
+            </>
+          )}
         </span>
         <span className="flex items-center gap-3">
           {error ? <span className="text-rose-700">{error}</span> : null}

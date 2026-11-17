@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { LegacySocialBanner } from "@/components/marketing/legacy-social-banner";
 
 type Platform = "Instagram" | "LinkedIn" | "YouTube" | "X" | "Facebook";
 type Status = "IDEA" | "DRAFT" | "SCHEDULED" | "POSTED";
@@ -291,6 +292,9 @@ export default function SocialPage() {
 
   return (
     <DashboardShell title="Social Media Calendar" subtitle="Plan and track content across platforms — add script, platform, and publish date.">
+      <div className="mb-4">
+        <LegacySocialBanner count={entries.length} onMoved={() => setEntries([])} />
+      </div>
 
       {/* ── Add-entry form ── */}
       <form

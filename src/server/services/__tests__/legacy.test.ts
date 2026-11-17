@@ -5,7 +5,7 @@ import { schema, type Db } from "@/server/db/client";
 import { createCompany } from "../companies";
 import { createPipelineItem, listPipelineItems } from "../pipeline-items";
 import { createProject, listTasks } from "../project-tasks";
-import { importLegacyOutreach, importLegacyTask } from "../legacy";
+import { importLegacyOutreach, importLegacySocial, importLegacyTask } from "../legacy";
 
 const ctx = { orgId: "default", userId: "staff-1" };
 let db: Db;
@@ -17,7 +17,7 @@ function must<T>(r: { ok: true; data: T } | { ok: false; error: string }): T {
   return r.data;
 }
 
-const card = (module: "projects" | "outreach", id: string, title: string, stage: string, extra: Record<string, string> = {}) =>
+const card = (module: "projects" | "outreach" | "app-dev", id: string, title: string, stage: string, extra: Record<string, string> = {}) =>
   createPipelineItem(module, { entityType: "x", entityId: id, title, stage, ...extra }, db);
 
 beforeAll(async () => {
@@ -102,5 +102,60 @@ describe("old outreach board", () => {
     await card("projects", "p9", "Task card", "BACKLOG");
     expect((await importLegacyOutreach(db, ctx, { cardId: "p9" })).ok).toBe(false);
     expect((await importLegacyOutreach(db, ctx, {})).ok).toBe(false);
+  });
+});
+
+describe("app development board", () => {
+  it("maps sprint stages onto task columns and removes the card", async () => {
+    await card("app-dev", "a1", "Fix login bug", "IN_REVIEW", { assignee: "Free One" });
+    await card("app-dev", "a2", "Ship v1", "RELEASED");
+    await card("app-dev", "a3", "Sprint item", "IN_SPRINT");
+    const [r1, r2, r3] = [
+      must(await importLegacyTask(db, ctx, { cardId: "a1", projectId, board: "app-dev" })),
+      must(await importLegacyTask(db, ctx, { cardId: "a2", projectId, board: "app-dev" })),
+      must(await importLegacyTask(db, ctx, { cardId: "a3", projectId, board: "app-dev" })),
+    ];
+    const tasks = must(await listTasks(db, ctx, projectId));
+    const by = (id: string) => tasks.find((t) => t.id === id)!;
+    expect(by(r1.taskId)).toMatchObject({ status: "IN_PROGRESS", assigneeId: "fl-1" });
+    expect(by(r1.taskId).description).toContain("review");
+    expect(by(r2.taskId).status).toBe("COMPLETED");
+    expect(by(r3.taskId).status).toBe("IN_PROGRESS");
+    expect((await listPipelineItems("app-dev", db)).map((c) => c.id)).toEqual([]);
+  });
+
+  it("will not take a card from a different board", async () => {
+    await card("projects", "x1", "Task card", "BACKLOG");
+    expect((await importLegacyTask(db, ctx, { cardId: "x1", projectId, board: "app-dev" })).ok).toBe(false);
+    expect((await listPipelineItems("projects", db)).map((c) => c.id)).toContain("x1");
+  });
+});
+
+describe("older social calendar", () => {
+  it("moves every entry to Marketing, attaching an account when the platform has exactly one", async () => {
+    await db.insert(schema.socialAccounts).values({ orgId: "default", platform: "INSTAGRAM", handle: "@sample" });
+    await db.insert(schema.socialAccounts).values([
+      { orgId: "default", platform: "LINKEDIN", handle: "@one" },
+      { orgId: "default", platform: "LINKEDIN", handle: "@two" },
+    ]);
+    await db.insert(schema.socialEntries).values([
+      { id: "s1", title: "Reel idea", script: "Hook, demo, call to action", platform: "Instagram", date: "2026-12-01", status: "IDEA" },
+      { id: "s2", title: "Launch post", script: "", platform: "LinkedIn", date: "2026-12-02", status: "POSTED" },
+      { id: "s3", title: "Video", script: "Script", platform: "YouTube", date: "2026-12-03", status: "SCHEDULED" },
+    ]);
+    const res = must(await importLegacySocial(db, ctx));
+    expect(res).toEqual({ moved: 3, attached: 1 });
+    expect(await db.select().from(schema.socialEntries)).toHaveLength(0);
+    const items = await db.select().from(schema.contentItems);
+    const by = (t: string) => items.find((i) => i.title === t)!;
+    expect(by("Reel idea")).toMatchObject({ status: "IDEA", scheduledDate: "2026-12-01", caption: "Hook, demo, call to action", orgId: "default" });
+    expect(by("Reel idea").accountId).not.toBeNull();
+    expect(by("Launch post")).toMatchObject({ status: "PUBLISHED", accountId: null });
+    expect(by("Launch post").caption).toBe("Platform: LinkedIn");
+    expect(by("Video").caption).toBe("Platform: YouTube\n\nScript");
+  });
+
+  it("does nothing when there is nothing to move", async () => {
+    expect(must(await importLegacySocial(db, ctx))).toEqual({ moved: 0, attached: 0 });
   });
 });
