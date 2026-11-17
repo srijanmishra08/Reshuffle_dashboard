@@ -1,8 +1,9 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getAuth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
+import { isPreviewRole, PREVIEW_COOKIE, previewUser } from "@/server/preview";
 import { roleAllowed, STAFF, type Role } from "@/server/roles";
 import { resolveSessionUser, type AuthedUser } from "@/server/session-user";
 
@@ -16,8 +17,8 @@ function deny(status: 401 | 403, error: string): Guard {
   return { ok: false, response: NextResponse.json({ error }, { status }) };
 }
 
-/** Resolve the signed-in user from the request cookies, or null. */
-export async function getSessionUser(): Promise<AuthedUser | null> {
+/** The signed-in user as their own account, ignoring any portal preview. */
+export async function getRealSessionUser(): Promise<AuthedUser | null> {
   const session = await getAuth().api.getSession({ headers: await headers() });
   const user = session?.user as
     | (NonNullable<typeof session>["user"] & { role?: string; orgId?: string; active?: boolean })
@@ -28,6 +29,35 @@ export async function getSessionUser(): Promise<AuthedUser | null> {
   }
 
   return resolveSessionUser(getDb(), user);
+}
+
+async function previewRoleFromCookie() {
+  try {
+    const value = (await cookies()).get(PREVIEW_COOKIE)?.value;
+    return isPreviewRole(value) ? value : null;
+  } catch {
+    // No request cookies here (for example a test without a request): no preview.
+    return null;
+  }
+}
+
+/**
+ * Resolve the acting user from the request cookies, or null. An admin who is previewing a portal
+ * acts as that portal's role against demo data; nobody else can preview.
+ */
+export async function getSessionUser(): Promise<AuthedUser | null> {
+  const real = await getRealSessionUser();
+  if (!real || real.role !== "ADMIN") return real;
+  const as = await previewRoleFromCookie();
+  return as ? previewUser(real, as) : real;
+}
+
+/** Guard for starting or ending a preview and managing demo data: the real account must be an admin. */
+export async function requireRealAdmin(): Promise<Guard> {
+  const user = await getRealSessionUser();
+  if (!user) return deny(401, "Authentication required");
+  if (user.role !== "ADMIN") return deny(403, "You do not have access to this resource");
+  return { ok: true, user };
 }
 
 /** Route-handler guard. Usage: `const g = await requireRole(["ADMIN"]); if (!g.ok) return g.response;` */

@@ -16,7 +16,7 @@ export default async function AgencyPage() {
 
   if (!result.ok) {
     return (
-      <PortalShell area="Partner agency" userName={user.name} title="Welcome">
+      <PortalShell area="Partner agency" userName={user.name} previewing={user.previewing} title="Welcome">
         <Card title="Your account is not set up yet">
           <Empty>{result.error}</Empty>
         </Card>
@@ -29,7 +29,7 @@ export default async function AgencyPage() {
   const today = result.data.today;
 
   return (
-    <PortalShell area="Partner agency" userName={user.name} title={agency.name} subtitle="Your team's work with Reshuffle and what you are owed.">
+    <PortalShell area="Partner agency" userName={user.name} previewing={user.previewing} title={agency.name} subtitle="Your team's work with Reshuffle and what you are owed.">
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Team members" value={String(members.length)} />
         <Stat label="Open tasks" value={String(open.length)} />

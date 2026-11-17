@@ -7,9 +7,21 @@ import type { Db } from "@/server/db/client";
 const state = vi.hoisted(() => ({
   db: null as unknown,
   session: null as null | { user: Record<string, unknown> },
+  cookies: {} as Record<string, string>,
 }));
 
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name in state.cookies ? { name, value: state.cookies[name] } : undefined),
+    set: (name: string, value: string) => {
+      state.cookies[name] = value;
+    },
+    delete: (name: string) => {
+      delete state.cookies[name];
+    },
+  }),
+}));
 vi.mock("@/server/auth", () => ({
   getAuth: () => ({ api: { getSession: async () => state.session } }),
 }));
@@ -59,6 +71,8 @@ const ADMIN_ONLY_FILES = [
   "/src/app/api/agencies/route.ts",
   "/src/app/api/agencies/[id]/route.ts",
   "/src/app/api/agencies/[id]/members/route.ts",
+  "/src/app/api/preview/route.ts",
+  "/src/app/api/demo/route.ts",
 ];
 // Outside people (clients, partner agencies, freelancers) never reach team routes.
 const OUTSIDERS = ["FREELANCER", "CLIENT", "AGENCY"];
@@ -96,6 +110,7 @@ beforeAll(async () => {
 afterAll(() => cleanup());
 beforeEach(() => {
   state.session = null;
+  state.cookies = {};
 });
 
 const guardedRoutes = Object.keys(loaders).filter((file) => !PUBLIC.some((p) => file.startsWith(p)) && !file.startsWith(PORTAL_PREFIX));
@@ -245,5 +260,64 @@ describe("portal routes check ownership", () => {
     const { GET } = (await loaders[pdfFile]()) as { GET: Handler };
     signIn("CLIENT", "default", { companyId: own.data.id, freelancerId: null, agencyId: null });
     expect((await call(GET, "GET", pdfFile)).status).toBe(404);
+  });
+});
+
+describe("portal preview", () => {
+  const respondFile = "/src/app/api/portal/client/tasks/[id]/respond/route.ts";
+  const previewFile = "/src/app/api/preview/route.ts";
+  const companiesFile = "/src/app/api/companies/route.ts";
+
+  async function startPreview(as: string) {
+    const { POST } = (await loaders[previewFile]()) as { POST: Handler };
+    return POST(new NextRequest("http://localhost/api/preview", { method: "POST", body: JSON.stringify({ as }), headers: { "content-type": "application/json" } }), {
+      params: Promise.resolve({}),
+    });
+  }
+  const clientRespond = async () => {
+    const { POST } = (await loaders[respondFile]()) as { POST: Handler };
+    return call(POST, "POST", respondFile, { decision: "APPROVE" });
+  };
+
+  it("lets a real admin act as an outside role, and still blocks the team routes while doing so", async () => {
+    signIn("ADMIN");
+    expect((await clientRespond()).status).toBe(403);
+    expect((await startPreview("CLIENT")).status).toBe(200);
+    expect(state.cookies.rs_preview).toBe("CLIENT");
+    // Acting as the demo client: the client route is reachable (task unknown, so 404), team routes are not.
+    expect((await clientRespond()).status).toBe(404);
+    const { GET } = (await loaders[companiesFile]()) as { GET: Handler };
+    expect((await call(GET, "GET", companiesFile)).status).toBe(403);
+
+    const { DELETE } = (await loaders[previewFile]()) as { DELETE: Handler };
+    expect((await call(DELETE, "DELETE", previewFile)).status).toBe(200);
+    expect(state.cookies.rs_preview).toBeUndefined();
+    expect((await call(GET, "GET", companiesFile)).status).toBe(200);
+  });
+
+  it("refuses an unknown role and anyone who is not an admin", async () => {
+    signIn("ADMIN");
+    expect((await startPreview("MANAGER")).status).toBe(400);
+    for (const role of ["MANAGER", "MEMBER", "CLIENT", "AGENCY", "FREELANCER"]) {
+      signIn(role);
+      expect((await startPreview("CLIENT")).status, role).toBe(403);
+    }
+  });
+
+  it("ignores a forged preview cookie from a non-admin", async () => {
+    state.cookies.rs_preview = "CLIENT";
+    signIn("MANAGER");
+    expect((await clientRespond()).status).toBe(403);
+    signIn("MEMBER");
+    expect((await clientRespond()).status).toBe(403);
+    const { GET } = (await loaders[companiesFile]()) as { GET: Handler };
+    expect((await call(GET, "GET", companiesFile)).status).toBe(200);
+  });
+
+  it("ignores a cookie with an unknown value", async () => {
+    state.cookies.rs_preview = "ADMIN";
+    signIn("ADMIN");
+    const { GET } = (await loaders[companiesFile]()) as { GET: Handler };
+    expect((await call(GET, "GET", companiesFile)).status).toBe(200);
   });
 });
