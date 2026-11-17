@@ -141,6 +141,13 @@
       "when": 1794829111863,
       "tag": "0019_greedy_goblin_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794907200426,
+      "tag": "0020_shiny_enchantress",
+      "breakpoints": true
     }
   ]
 }
