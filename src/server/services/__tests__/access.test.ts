@@ -53,9 +53,9 @@ describe("access", () => {
     must(await grantAccess(db, ctx, admin, { email: "free@example.test", role: "FREELANCER", freelancerId: "fl-1" }));
     must(await grantAccess(db, ctx, admin, { email: "team@example.test", role: "MEMBER" }));
 
-    expect(await resolveAccessForEmail(db, "client@example.test")).toEqual({ role: "CLIENT", links: { companyId, freelancerId: null, agencyId: null } });
+    expect(await resolveAccessForEmail(db, "client@example.test")).toEqual({ role: "CLIENT", links: { companyId, freelancerId: null, agencyId: null }, active: true });
     expect((await resolveAccessForEmail(db, "free@example.test"))?.links.freelancerId).toBe("fl-1");
-    expect(await resolveAccessForEmail(db, "team@example.test")).toEqual({ role: "MEMBER", links: { companyId: null, freelancerId: null, agencyId: null } });
+    expect(await resolveAccessForEmail(db, "team@example.test")).toEqual({ role: "MEMBER", links: { companyId: null, freelancerId: null, agencyId: null }, active: true });
     expect(await resolveAccessForEmail(db, "nobody@example.test")).toBeNull();
   });
 
@@ -134,5 +134,17 @@ describe("agencies", () => {
     const other = must(await createAgency(db, ctx, { name: "Next Agency" }));
     must(await addAgencyMember(db, ctx, other.id, { freelancerId: "fl-2" }));
     expect((await deleteAgency(db, ctx, "missing")).ok).toBe(false);
+  });
+});
+
+describe("deactivated accounts", () => {
+  it("are refused straight away, even if a cached session still says active", async () => {
+    must(await grantAccess(db, ctx, admin, { email: "off@example.test", role: "MEMBER" }));
+    const now = new Date();
+    await db.insert(schema.user).values({ id: "off-1", name: "Off", email: "off@example.test", role: "MEMBER", active: true, createdAt: now, updatedAt: now });
+    const cachedSession = { id: "off-1", email: "off@example.test", name: "Off", role: "MEMBER", orgId: "default", active: true };
+    expect(await resolveSessionUser(db, cachedSession)).not.toBeNull();
+    await db.update(schema.user).set({ active: false }).where(eq(schema.user.id, "off-1"));
+    expect(await resolveSessionUser(db, cachedSession)).toBeNull();
   });
 });

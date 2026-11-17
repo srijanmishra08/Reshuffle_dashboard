@@ -36,11 +36,11 @@ export function bootstrapAdminEmails(): string[] {
 }
 
 /** Decide whether an email may sign in, with which role and which linked record. Returns null if not allowed. */
-export async function resolveAccessForEmail(db: Db, email: string): Promise<{ role: Role; links: AccessLinks } | null> {
+export async function resolveAccessForEmail(db: Db, email: string): Promise<{ role: Role; links: AccessLinks; active: boolean } | null> {
   const normalized = email.trim().toLowerCase();
 
   if (bootstrapAdminEmails().includes(normalized)) {
-    return { role: "ADMIN", links: NO_LINKS };
+    return { role: "ADMIN", links: NO_LINKS, active: true };
   }
 
   const rows = await db
@@ -49,14 +49,21 @@ export async function resolveAccessForEmail(db: Db, email: string): Promise<{ ro
       companyId: schema.allowedEmails.companyId,
       freelancerId: schema.allowedEmails.freelancerId,
       agencyId: schema.allowedEmails.agencyId,
+      active: schema.user.active,
     })
     .from(schema.allowedEmails)
+    .leftJoin(schema.user, eq(schema.user.email, schema.allowedEmails.email))
     .where(eq(schema.allowedEmails.email, normalized))
     .limit(1);
 
   const row = rows[0];
   if (!row || !isRole(row.role)) return null;
-  return { role: row.role, links: { companyId: row.companyId, freelancerId: row.freelancerId, agencyId: row.agencyId } };
+  return {
+    role: row.role,
+    links: { companyId: row.companyId, freelancerId: row.freelancerId, agencyId: row.agencyId },
+    // Read from the database here, not from the cached session, so a deactivated account stops at once.
+    active: row.active !== false,
+  };
 }
 
 /** Decide whether an email may sign in, and with which role. Returns null if not allowed. */
@@ -76,7 +83,7 @@ export async function resolveSessionUser(db: Db, raw: RawSessionUser): Promise<A
 
   const access = await resolveAccessForEmail(db, raw.email);
 
-  if (!access) {
+  if (!access || !access.active) {
     return null;
   }
 
