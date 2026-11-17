@@ -4,6 +4,7 @@ import { createTestDb } from "@/test/db";
 import { schema, type Db } from "@/server/db/client";
 import type { Storage } from "@/server/lib/storage";
 import { createCompany } from "../companies";
+import { getInvoice } from "../invoices";
 import {
   authenticateIngestKey,
   createIngestKey,
@@ -14,6 +15,7 @@ import {
   listUploadedDocuments,
   parseAmountPaise,
   parseDocumentDate,
+  recordUploadedInvoice,
   revokeIngestKey,
   safeFilename,
 } from "../ingest";
@@ -57,6 +59,7 @@ const meta = { docType: "INVOICE", number: "RESHUFFLE/2026/05/01", partyName: "F
 
 beforeAll(async () => {
   ({ db, cleanup } = await createTestDb());
+  await db.insert(schema.orgSettings).values({ orgId: "default", legalName: "Test Studio", address: "1 Example Road", stateCode: "22", gstin: "22AAAAA0000A1Z5", signatoryName: "A Signer" });
   await createCompany(db, ctx, { name: "Fake Traders" });
   const made = must(await createIngestKey(db, ctx, { label: "Invoice software" }));
   token = made.token;
@@ -232,5 +235,107 @@ describe("listing, opening and deleting", () => {
     expect(await db.select().from(schema.attachments).where(eq(schema.attachments.entityId, inv.id))).toHaveLength(0);
     expect((await getUploadedDocumentFile(db, ctx, saved.id, storage)).ok).toBe(false);
     expect((await deleteUploadedDocument(db, ctx, saved.id, storage)).ok).toBe(false);
+  });
+});
+
+describe("recording an uploaded invoice in the dashboard", () => {
+  const detail = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({ clientName: "Fake Traders", clientGstin: "", clientAddress: "1 Market Road, Raipur", items: [{ description: "Video production", amount: "1000" }], advance: "0", paymentTerms: "50% upfront", notes: "Pay in 30 days", ...over });
+  const send = (n: number, over: { number?: string; party?: string; amount?: string; date?: string; json?: string } = {}) => {
+    const { storage } = fakeStorage();
+    return ingestDocument(
+      db,
+      key,
+      { docType: "INVOICE", number: over.number ?? `REC/2026/${n}`, partyName: over.party ?? "Fake Traders", amountText: over.amount ?? "₹1,180.00", dateText: over.date ?? "12 May 2026", filename: `rec-${n}.pdf`, invoiceJson: over.json ?? detail() },
+      pdf(`record test ${n} ${over.number ?? ""} ${over.json ?? ""}`),
+      storage
+    );
+  };
+  const invoiceCount = async () => (await db.select().from(schema.invoices)).length;
+
+  it("records an invoice for a client the dashboard already knows, keeping its number", async () => {
+    const res = must(await send(1));
+    expect(res).toMatchObject({ recorded: true, recordIssue: null, invoiceLinked: true });
+    const row = (await db.select().from(schema.uploadedDocuments).where(eq(schema.uploadedDocuments.id, res.id)))[0];
+    expect(row.invoiceId).not.toBeNull();
+    expect(row.recordNote).toBeNull();
+    const inv = must(await getInvoice(db, ctx, row.invoiceId!));
+    expect(inv).toMatchObject({ number: "REC/2026/1", status: "ISSUED", issueDate: "2026-05-12", fy: "2026-27", totalPaise: 118_000, subtotalPaise: 100_000, paidPaise: 0, isIssued: true, companyName: "Fake Traders" });
+    expect(inv.items).toHaveLength(1);
+    expect(inv.notes).toBe("Pay in 30 days");
+    expect(await db.select().from(schema.attachments).where(eq(schema.attachments.entityId, row.invoiceId!))).toHaveLength(1);
+  });
+
+  it("finds the client by GSTIN when the name differs, and uses IGST for another state", async () => {
+    const other = must(await createCompany(db, ctx, { name: "Spherecho", legalName: "Spherecho Productions Private Limited", gstin: "27AAAAA1111A1Z1", stateCode: "27" }));
+    const res = must(await send(2, { party: "Sphere Echo", json: detail({ clientName: "Sphere Echo", clientGstin: "27aaaaa1111a1z1" }) }));
+    expect(res.recorded).toBe(true);
+    const row = (await db.select().from(schema.uploadedDocuments).where(eq(schema.uploadedDocuments.id, res.id)))[0];
+    const inv = must(await getInvoice(db, ctx, row.invoiceId!));
+    expect(inv.companyId).toBe(other.id);
+    expect(inv.taxMode).toBe("INTER");
+    expect(inv.igstPaise).toBe(18_000);
+    expect(inv.totalPaise).toBe(118_000);
+  });
+
+  it("does not create a client or an invoice for a client it does not know", async () => {
+    const before = { invoices: await invoiceCount(), companies: (await db.select().from(schema.companies)).length };
+    const res = must(await send(3, { party: "asd", json: detail({ clientName: "asd", clientGstin: "" }) }));
+    expect(res).toMatchObject({ recorded: false, recordIssue: "NEW_CLIENT" });
+    expect(await invoiceCount()).toBe(before.invoices);
+    expect((await db.select().from(schema.companies)).length).toBe(before.companies);
+    const listed = must(await listUploadedDocuments(db, ctx, { q: "REC/2026/3" }))[0];
+    expect(listed).toMatchObject({ recordNote: "NEW_CLIENT", canRecord: true, invoiceId: null });
+
+    const refused = await recordUploadedInvoice(db, ctx, res.id, { createClient: false });
+    expect(refused.ok).toBe(false);
+    const made = must(await recordUploadedInvoice(db, ctx, res.id, { createClient: true }));
+    const inv = must(await getInvoice(db, ctx, made.invoiceId));
+    expect(inv).toMatchObject({ number: "REC/2026/3", companyName: "asd" });
+    const client = (await db.select().from(schema.companies).where(eq(schema.companies.id, inv.companyId)))[0];
+    expect(client).toMatchObject({ source: "Invoice software", lifecycle: "ACTIVE" });
+    expect((await recordUploadedInvoice(db, ctx, res.id, { createClient: true })).ok).toBe(false);
+  });
+
+  it("creates the client with its GSTIN and state when asked", async () => {
+    const res = must(await send(4, { party: "New Buyer", json: detail({ clientName: "New Buyer", clientGstin: "29AAAAA2222A1Z2", clientAddress: "Bengaluru" }) }));
+    expect(res.recordIssue).toBe("NEW_CLIENT");
+    const made = must(await recordUploadedInvoice(db, ctx, res.id, { createClient: true }));
+    const inv = must(await getInvoice(db, ctx, made.invoiceId));
+    const client = (await db.select().from(schema.companies).where(eq(schema.companies.id, inv.companyId)))[0];
+    expect(client).toMatchObject({ gstin: "29AAAAA2222A1Z2", stateCode: "29", address: "Bengaluru" });
+    expect(inv.taxMode).toBe("INTER");
+  });
+
+  it("leaves a PDF unrecorded, with a reason and no stray invoice, when something does not add up", async () => {
+    const before = await invoiceCount();
+    // Same number, but neither the total nor the client name on the PDF matches: it is not attached, and the number is taken.
+    expect(must(await send(5, { number: "REC/2026/1", party: "Other Co", amount: "₹2,000.00" })).recordIssue).toBe("NUMBER_USED");
+    expect(must(await send(6, { amount: "₹5,000.00" })).recordIssue).toBe("TOTAL_MISMATCH");
+    expect(must(await send(7, { date: "someday" })).recordIssue).toBe("NO_DATE");
+    expect(must(await send(8, { json: detail({ items: [{ description: "x", amount: "ten" }] }) })).recordIssue).toBe("BAD_ITEMS");
+    expect(must(await send(9, { json: "" })).recordIssue).toBe("NO_DETAILS");
+    expect(must(await send(10, { json: "{not json" })).recordIssue).toBe("NO_DETAILS");
+    expect(await invoiceCount()).toBe(before);
+    expect(await db.select().from(schema.invoices).where(eq(schema.invoices.status, "DRAFT"))).toHaveLength(0);
+    const noDetails = must(await listUploadedDocuments(db, ctx, { q: "REC/2026/9" }))[0];
+    expect(noDetails.canRecord).toBe(false);
+  });
+
+  it("accepts the rupee rounding between the PDF and the dashboard's total", async () => {
+    const res = must(await send(11, { json: detail({ items: [{ description: "Odd amount", amount: "1234.57" }] }), amount: "₹1,456.99" }));
+    expect(res.recorded).toBe(true);
+    const row = (await db.select().from(schema.uploadedDocuments).where(eq(schema.uploadedDocuments.id, res.id)))[0];
+    const inv = must(await getInvoice(db, ctx, row.invoiceId!));
+    expect(Math.abs(inv.totalPaise - 145_699)).toBeLessThanOrEqual(100);
+  });
+
+  it("only records invoices, only in the right organisation, and never twice", async () => {
+    const { storage } = fakeStorage();
+    const wo = must(await ingestDocument(db, key, { docType: "WORK_ORDER", number: "WO/9", partyName: "Fake Traders", amountText: "₹100", dateText: "1 June 2026", filename: "wo.pdf" }, pdf("wo record test"), storage));
+    expect((await recordUploadedInvoice(db, ctx, wo.id, {})).ok).toBe(false);
+    const res = must(await send(12, { amount: "₹5,000.00" }));
+    expect((await recordUploadedInvoice(db, other, res.id, { createClient: true })).ok).toBe(false);
+    expect((await recordUploadedInvoice(db, ctx, "missing", {})).ok).toBe(false);
   });
 });

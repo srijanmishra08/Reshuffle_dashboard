@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
+import { recordIssueMessages, type RecordIssue } from "@/lib/schemas/ingest";
 import { formatINR } from "@/server/lib/money";
 
 type Doc = {
@@ -16,6 +17,8 @@ type Doc = {
   sizeBytes: number;
   createdAt: string;
   invoiceId: string | null;
+  recordNote: string | null;
+  canRecord: boolean;
   companyId: string | null;
 };
 type Key = { id: string; label: string; prefix: string; createdAt: string; lastUsedAt: string | null; revokedAt: string | null };
@@ -81,6 +84,23 @@ export function InvoicePdfLibrary({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
+  /** Tries to record the invoice. If the client is not in the dashboard, asks before creating it. */
+  async function record(d: Doc) {
+    const post = (createClient: boolean) => api(`/api/uploaded-documents/${d.id}/record`, { method: "POST", ...jsonBody({ createClient }) });
+    await run(async () => {
+      try {
+        await post(false);
+      } catch (e) {
+        const needsClient = e instanceof Error && e.message === recordIssueMessages.NEW_CLIENT;
+        if (!needsClient) throw e;
+        if (!window.confirm(`“${d.partyName}” is not in the dashboard yet. Create this client and record invoice ${d.number} for them?`)) return;
+        await post(true);
+      }
+      await loadDocs();
+    });
+    await loadDocs();
+  }
+
   const activeKeys = keys.filter((k) => !k.revokedAt);
 
   return (
@@ -109,18 +129,19 @@ export function InvoicePdfLibrary({ isAdmin }: { isAdmin: boolean }) {
                 <th className={`${th} text-right`}>Amount</th>
                 <th className={th}>Date on document</th>
                 <th className={th}>Saved</th>
+                <th className={th}>In Invoices</th>
                 <th className={th} />
               </tr>
             </thead>
             <tbody>
               {docs === null && !error ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-3 text-slate-500">Loading...</td>
+                  <td colSpan={8} className="px-3 py-3 text-slate-500">Loading...</td>
                 </tr>
               ) : null}
               {docs?.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-slate-500">
+                  <td colSpan={8} className="px-3 py-4 text-slate-500">
                     {q || type ? "Nothing matches." : "No PDFs yet. Once the invoice software is connected (below), every invoice or work order PDF you make there appears here."}
                   </td>
                 </tr>
@@ -142,6 +163,26 @@ export function InvoicePdfLibrary({ isAdmin }: { isAdmin: boolean }) {
                   <td className={th}>{d.documentDate ?? "—"}</td>
                   <td className={th}>
                     {when(d.createdAt)} <span className="text-xs text-slate-400">· {size(d.sizeBytes)}</span>
+                  </td>
+                  <td className={th}>
+                    {d.docType !== "INVOICE" ? (
+                      <span className="text-xs text-slate-400">—</span>
+                    ) : d.invoiceId ? (
+                      <Link href={`/invoices/${d.invoiceId}`} className="text-xs font-medium text-emerald-700 underline">Recorded</Link>
+                    ) : (
+                      <span className="block max-w-56 text-xs text-slate-600">
+                        {d.recordNote && d.recordNote in recordIssueMessages ? recordIssueMessages[d.recordNote as RecordIssue] : "Not recorded."}
+                        {d.canRecord ? (
+                          <button
+                            disabled={busy}
+                            onClick={() => void record(d)}
+                            className="ml-1 font-medium text-sky-700 underline disabled:opacity-50"
+                          >
+                            Record as invoice
+                          </button>
+                        ) : null}
+                      </span>
+                    )}
                   </td>
                   <td className={`${th} space-x-3 text-right`}>
                     <a href={`/api/uploaded-documents/${d.id}/file`} target="_blank" rel="noreferrer" className="font-medium text-sky-700 hover:underline">Open PDF</a>
