@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import type { Company } from "@/lib/crm-types";
@@ -48,9 +48,9 @@ function basis(p: ProgressRow) {
 
 /**
  * Progress of every project, or of one client's projects when `companyId` is given.
- * Includes a form to start a project directly for a client.
+ * Includes a form to start a project directly for a client. With `groupByClient`, rows sit under a heading per client.
  */
-export function ProjectProgress({ companyId }: { companyId?: string }) {
+export function ProjectProgress({ companyId, groupByClient = false }: { companyId?: string; groupByClient?: boolean }) {
   const [rows, setRows] = useState<ProgressRow[] | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [status, setStatus] = useState("");
@@ -110,6 +110,45 @@ export function ProjectProgress({ companyId }: { companyId?: string }) {
       setBusy(false);
     }
   }
+
+  const renderRow = (p: ProgressRow) => (
+
+              <tr key={p.id} className="border-t border-slate-100 align-top">
+                <td className="px-3 py-2">
+                  <Link href={`/projects/${p.id}`} className="font-medium text-sky-700 hover:underline">
+                    {p.name}
+                  </Link>
+                </td>
+                {!companyId ? (
+                  <td className="px-3 py-2">
+                    <Link href={`/crm/${p.companyId}`} className="hover:underline">
+                      {p.companyName}
+                    </Link>
+                  </td>
+                ) : null}
+                <td className="px-3 py-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${projectStatusStyles[p.status]}`}>{p.status.replace("_", " ")}</span>
+                </td>
+                <td className="px-3 py-2">
+                  <ProgressBar percent={p.progressPercent} label={`${p.name} progress`} />
+                  <p className="mt-0.5 text-xs text-slate-500">{basis(p)}</p>
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {p.tasksOverdue ? <p className="font-medium text-rose-600">{p.tasksOverdue} overdue task(s)</p> : null}
+                  {p.inReview ? <p className="text-violet-700">{p.inReview} with client for review</p> : null}
+                  {!p.tasksOverdue && !p.inReview ? <span className="text-slate-400">—</span> : null}
+                </td>
+                <td className="px-3 py-2 text-right">{formatINR(p.budgetPaise)}</td>
+                <td className={`px-3 py-2 ${p.overdue ? "font-medium text-rose-600" : ""}`}>{p.dueDate ? `${p.dueDate}${p.overdue ? " (late)" : ""}` : "—"}</td>
+              </tr>
+  );
+
+  const groups = Object.values(
+    (rows ?? []).reduce<Record<string, { companyId: string; companyName: string; rows: ProgressRow[] }>>((acc, r) => {
+      (acc[r.companyId] ??= { companyId: r.companyId, companyName: r.companyName, rows: [] }).rows.push(r);
+      return acc;
+    }, {})
+  ).sort((a, b) => a.companyName.localeCompare(b.companyName));
 
   const live = (rows ?? []).filter((p) => p.status === "ACTIVE" || p.status === "PLANNED" || p.status === "ON_HOLD");
   const average = live.length ? Math.round(live.reduce((s, p) => s + p.progressPercent, 0) / live.length) : 0;
@@ -210,36 +249,21 @@ export function ProjectProgress({ companyId }: { companyId?: string }) {
                 <td colSpan={7} className="px-3 py-4 text-slate-500">Loading...</td>
               </tr>
             ) : null}
-            {rows?.map((p) => (
-              <tr key={p.id} className="border-t border-slate-100 align-top">
-                <td className="px-3 py-2">
-                  <Link href={`/projects/${p.id}`} className="font-medium text-sky-700 hover:underline">
-                    {p.name}
-                  </Link>
-                </td>
-                {!companyId ? (
-                  <td className="px-3 py-2">
-                    <Link href={`/crm/${p.companyId}`} className="hover:underline">
-                      {p.companyName}
-                    </Link>
-                  </td>
-                ) : null}
-                <td className="px-3 py-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${projectStatusStyles[p.status]}`}>{p.status.replace("_", " ")}</span>
-                </td>
-                <td className="px-3 py-2">
-                  <ProgressBar percent={p.progressPercent} label={`${p.name} progress`} />
-                  <p className="mt-0.5 text-xs text-slate-500">{basis(p)}</p>
-                </td>
-                <td className="px-3 py-2 text-xs">
-                  {p.tasksOverdue ? <p className="font-medium text-rose-600">{p.tasksOverdue} overdue task(s)</p> : null}
-                  {p.inReview ? <p className="text-violet-700">{p.inReview} with client for review</p> : null}
-                  {!p.tasksOverdue && !p.inReview ? <span className="text-slate-400">—</span> : null}
-                </td>
-                <td className="px-3 py-2 text-right">{formatINR(p.budgetPaise)}</td>
-                <td className={`px-3 py-2 ${p.overdue ? "font-medium text-rose-600" : ""}`}>{p.dueDate ? `${p.dueDate}${p.overdue ? " (late)" : ""}` : "—"}</td>
-              </tr>
-            ))}
+            {groupByClient
+              ? groups.map((g) => (
+                  <Fragment key={g.companyId}>
+                    <tr className="border-t border-slate-200 bg-slate-50">
+                      <td colSpan={7} className="px-3 py-2">
+                        <Link href={`/crm/${g.companyId}`} className="font-semibold text-slate-900 hover:underline">{g.companyName}</Link>
+                        <span className="ml-2 text-xs text-slate-500">
+                          {g.rows.length} project{g.rows.length === 1 ? "" : "s"} · average {Math.round(g.rows.reduce((sum, r) => sum + r.progressPercent, 0) / g.rows.length)}%
+                        </span>
+                      </td>
+                    </tr>
+                    {g.rows.map((p) => renderRow(p))}
+                  </Fragment>
+                ))
+              : rows?.map((p) => renderRow(p))}
             {rows?.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-slate-500">

@@ -61,10 +61,11 @@ export const departments: Department[] = [
   {
     key: "crm",
     title: "CRM",
-    description: "Everything about clients: companies, contacts, timeline, follow-ups and onboarding forms.",
+    description: "Everything about clients: companies, contacts, timeline, follow-ups, projects and onboarding forms.",
     icon: Users,
     items: [
       { title: "Clients", href: "/crm", description: "Companies, contacts, timeline and follow-ups.", icon: Users },
+      { title: "Client projects", href: "/crm/projects", description: "Each client's projects and their progress.", icon: Briefcase },
       { title: "Questionnaires", href: "/questionnaires", description: "Client onboarding forms and answers.", icon: ClipboardList },
     ],
   },

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, jsonBody } from "@/lib/api";
+import { ClientHub } from "@/components/crm/client-hub";
 import { ProjectProgress } from "@/components/projects/project-progress";
 import {
   formatDate,
@@ -99,7 +100,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
       {message ? <p className="text-sm text-slate-600">{message}</p> : null}
 
-      <Card title="Projects and progress">
+      <Card title="Projects">
         <ProjectProgress companyId={companyId} />
       </Card>
 
@@ -179,12 +180,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
             <MeetingForm onSubmit={(body) => run(() => api(`${base}/meetings`, { method: "POST", ...jsonBody(body) }), "Meeting added.")} />
           </Card>
 
-          <Card title="Deals, documents and invoices">
-            <p className="text-sm text-slate-500">
-              See the <Link href="/sales" className="text-sky-700 hover:underline">Sales board</Link> and{" "}
-              <Link href="/invoices" className="text-sky-700 hover:underline">Invoices</Link> for this client.
-            </p>
-          </Card>
+          <ClientHub companyId={companyId} />
         </div>
       </div>
     </div>

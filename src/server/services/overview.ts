@@ -8,7 +8,7 @@ import { receivables, todayIst } from "@/server/services/invoices";
 import { listDueFollowUps } from "@/server/services/interactions";
 import { openDealStages } from "@/server/models/deals";
 
-const { companies, deals, dealStageHistory, deliveryProjects, projectMilestones, ledgerEntries, meetings, activityLogs } =
+const { companies, deals, dealStageHistory, deliveryProjects, projectMilestones, projectTasks, ledgerEntries, meetings, activityLogs } =
   schema;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -21,7 +21,7 @@ export async function getOverview(db: Db, ctx: ServiceContext, now = new Date())
   const monthStart = new Date(`${month}-01T00:00:00+05:30`);
   const weekAhead = new Date(now.getTime() + WEEK_MS);
 
-  const [pipeline, money, activeClients, won, projectRows, lateMilestones, ledger, followUps, upcoming, activity] =
+  const [pipeline, money, activeClients, won, projectRows, lateMilestones, taskRows, ledger, followUps, upcoming, activity] =
     await Promise.all([
       pipelineSummary(db, ctx),
       receivables(db, ctx.orgId),
@@ -65,6 +65,12 @@ export async function getOverview(db: Db, ctx: ServiceContext, now = new Date())
             lt(projectMilestones.dueDate, today)
           )
         ),
+      db
+        .select({ status: projectTasks.status, overdue: sql<number>`count(*) filter (where ${projectTasks.dueDate} < ${today})`, count: sql<number>`count(*)` })
+        .from(projectTasks)
+        .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
+        .where(and(eq(projectTasks.orgId, ctx.orgId), inArray(deliveryProjects.status, ["PLANNED", "ACTIVE"]), inArray(projectTasks.status, ["BACKLOG", "TODO", "IN_PROGRESS", "CLIENT_REVIEW", "REVISION"])))
+        .groupBy(projectTasks.status),
       db
         .select({ kind: ledgerEntries.kind, total: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)` })
         .from(ledgerEntries)
@@ -123,6 +129,8 @@ export async function getOverview(db: Db, ctx: ServiceContext, now = new Date())
       active: (byStatus.get("ACTIVE") ?? 0) + (byStatus.get("PLANNED") ?? 0),
       onHold: byStatus.get("ON_HOLD") ?? 0,
       atRisk: num(lateMilestones[0]?.count),
+      tasksOverdue: taskRows.reduce((sum, r) => sum + num(r.overdue), 0),
+      inClientReview: num(taskRows.find((r) => r.status === "CLIENT_REVIEW")?.count),
     },
     cash: {
       incomePaise: byKind.get("INCOME") ?? 0,

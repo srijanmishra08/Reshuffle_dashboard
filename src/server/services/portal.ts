@@ -211,13 +211,7 @@ export async function getFreelancerHome(db: Db, user: AuthedUser) {
   const ctx = ctxOf(user);
   const team = await getFreelancerTeamView(db, ctx, freelancerId);
   if (!team.ok) return fail("NOT_FOUND", NO_FREELANCER);
-  const tasks = await db
-    .select(taskColumns)
-    .from(projectTasks)
-    .innerJoin(deliveryProjects, eq(deliveryProjects.id, projectTasks.projectId))
-    .where(and(eq(projectTasks.assigneeId, freelancerId), eq(projectTasks.orgId, ctx.orgId)))
-    .orderBy(asc(projectTasks.dueDate), asc(projectTasks.createdAt));
-  return ok({ ...team.data, tasks, today: todayIst(new Date()) });
+  return ok({ ...team.data, today: todayIst(new Date()) });
 }
 
 /**

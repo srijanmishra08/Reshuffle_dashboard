@@ -10,6 +10,7 @@ import {
   type DeliveryProjectDetail,
   type DeliveryStatusValue,
 } from "@/lib/delivery-types";
+import { ProjectLinks } from "@/components/projects/project-links";
 import { TaskBoard } from "@/components/projects/task-board";
 
 export function DeliveryProjectDetailView({ id }: { id: string }) {
@@ -103,6 +104,8 @@ export function DeliveryProjectDetailView({ id }: { id: string }) {
       <p className="text-xs text-slate-500">
         Budget not yet invoiced: {formatINR(remaining)}. Invoiced and paid count issued invoices only.
       </p>
+
+      <ProjectLinks projectId={id} />
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold uppercase text-slate-500">Task board</h3>
