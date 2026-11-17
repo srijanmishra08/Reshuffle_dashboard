@@ -20,9 +20,17 @@ declare global {
  * connection to the pooler and was never closed, so under load the pooler ran out of connections and
  * queries waited until they were cancelled.
  *
- * `max` lets the queries of one request run side by side. `idle_timeout` returns idle connections to the
- * pooler quickly so a quiet instance holds none, and `connect_timeout` makes an unreachable database
- * fail in seconds instead of hanging the request.
+ * `max_pipeline: 1` is essential. By default postgres-js sends several queued queries down one connection
+ * without waiting for each answer (pipelining). Through Supabase's transaction pooler that stalls: the
+ * pooler hands the connection to another client between queries and the rest never get an answer, so a
+ * request that ran several queries at once (the Overview, notifications, the client and project pages)
+ * hung until it timed out. With pipelining off, each connection runs one query at a time and the
+ * queries of one request run side by side over the pool instead. Measured against a Supabase project:
+ * the Overview never finished with pipelining on and took about one second with it off.
+ *
+ * `max` is the size of that pool. `idle_timeout` returns idle connections to the pooler quickly so a quiet
+ * instance holds none, and `connect_timeout` makes an unreachable database fail in seconds instead of
+ * hanging the request.
  */
 export function getDb(): Db {
   if (global.dbInstance) {
@@ -36,7 +44,7 @@ export function getDb(): Db {
   }
 
   global.dbInstance = drizzle(
-    postgres(url, { prepare: false, max: 4, idle_timeout: 20, connect_timeout: 10, max_lifetime: 60 * 30, ssl: "require" }),
+    postgres(url, { prepare: false, max: 4, max_pipeline: 1, idle_timeout: 20, connect_timeout: 10, max_lifetime: 60 * 30, ssl: "require" }),
     { schema }
   );
 
