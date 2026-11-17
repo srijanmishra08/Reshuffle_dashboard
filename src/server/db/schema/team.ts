@@ -109,3 +109,35 @@ export const projectTasks = pgTable(
   },
   (t) => [index("idx_project_tasks_project").on(t.projectId, t.status, t.position), index("idx_project_tasks_assignee").on(t.assigneeId)]
 ).enableRLS();
+
+/** Partner agencies that supply freelancers. An agency sign-in sees the work and payouts of its own freelancers. */
+export const agencies = pgTable(
+  "agencies",
+  {
+    id: text("id").primaryKey().$defaultFn(newId),
+    orgId: text("org_id").notNull().default("default"),
+    name: text("name").notNull(),
+    contactName: text("contact_name"),
+    contactEmail: text("contact_email"),
+    notes: text("notes"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("uq_agencies_org_name").on(t.orgId, t.name)]
+).enableRLS();
+
+/** A freelancer belongs to at most one agency. */
+export const agencyFreelancers = pgTable(
+  "agency_freelancers",
+  {
+    agencyId: text("agency_id")
+      .notNull()
+      .references(() => agencies.id, { onDelete: "cascade" }),
+    freelancerId: text("freelancer_id")
+      .notNull()
+      .references(() => legacyFreelancers.id, { onDelete: "cascade" }),
+    orgId: text("org_id").notNull().default("default"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("uq_agency_freelancers_freelancer").on(t.freelancerId), index("idx_agency_freelancers_agency").on(t.agencyId)]
+).enableRLS();

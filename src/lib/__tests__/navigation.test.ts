@@ -15,17 +15,18 @@ describe("navigation", () => {
   it("points every page at a route that exists", () => {
     const app = path.join(process.cwd(), "src/app");
     for (const item of allItems) {
-      expect(existsSync(path.join(app, item.href, "page.tsx")), item.href).toBe(true);
+      expect(existsSync(path.join(app, "(staff)", item.href, "page.tsx")), item.href).toBe(true);
     }
   });
 
   it("leaves no top-level page out of a department", () => {
     const app = path.join(process.cwd(), "src/app");
-    // Pages that are deliberately not in the menu: sign-in, the public client pages, API routes and the department landing.
-    const outOfMenu = new Set(["api", "d", "login", "p"]);
+    // Every page in the team dashboard (the (staff) group) is listed, except the department landing pages. Sign-in, public pages and the outside portals live outside that group.
+    const outOfMenu = new Set(["api", "d"]);
     const listed = new Set(allItems.map((i) => i.href.split("/")[1]));
-    const missing = readdirSync(app, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && !outOfMenu.has(e.name) && existsSync(path.join(app, e.name, "page.tsx")))
+    const staff = path.join(app, "(staff)");
+    const missing = readdirSync(staff, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !outOfMenu.has(e.name) && existsSync(path.join(staff, e.name, "page.tsx")))
       .map((e) => e.name)
       .filter((name) => !listed.has(name));
     expect(missing).toEqual([]);

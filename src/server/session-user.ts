@@ -3,13 +3,19 @@ import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import { isRole, type Role } from "@/server/roles";
 
+/** The one record an outside person's sign-in is linked to. All null for staff. */
+export type AccessLinks = { companyId: string | null; freelancerId: string | null; agencyId: string | null };
+
 export type AuthedUser = {
   id: string;
   email: string;
   name: string;
   role: Role;
   orgId: string;
+  links: AccessLinks;
 };
+
+const NO_LINKS: AccessLinks = { companyId: null, freelancerId: null, agencyId: null };
 
 type RawSessionUser = {
   id: string;
@@ -20,29 +26,40 @@ type RawSessionUser = {
   active?: boolean | null;
 };
 
-function bootstrapAdminEmails(): string[] {
+export function bootstrapAdminEmails(): string[] {
   return (process.env.BOOTSTRAP_ADMIN_EMAILS ?? "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
 }
 
-/** Decide whether an email may sign in, and with which role. Returns null if not allowed. */
-export async function resolveRoleForEmail(db: Db, email: string): Promise<Role | null> {
+/** Decide whether an email may sign in, with which role and which linked record. Returns null if not allowed. */
+export async function resolveAccessForEmail(db: Db, email: string): Promise<{ role: Role; links: AccessLinks } | null> {
   const normalized = email.trim().toLowerCase();
 
   if (bootstrapAdminEmails().includes(normalized)) {
-    return "ADMIN";
+    return { role: "ADMIN", links: NO_LINKS };
   }
 
   const rows = await db
-    .select({ role: schema.allowedEmails.role })
+    .select({
+      role: schema.allowedEmails.role,
+      companyId: schema.allowedEmails.companyId,
+      freelancerId: schema.allowedEmails.freelancerId,
+      agencyId: schema.allowedEmails.agencyId,
+    })
     .from(schema.allowedEmails)
     .where(eq(schema.allowedEmails.email, normalized))
     .limit(1);
 
-  const role = rows[0]?.role;
-  return role && isRole(role) ? role : null;
+  const row = rows[0];
+  if (!row || !isRole(row.role)) return null;
+  return { role: row.role, links: { companyId: row.companyId, freelancerId: row.freelancerId, agencyId: row.agencyId } };
+}
+
+/** Decide whether an email may sign in, and with which role. Returns null if not allowed. */
+export async function resolveRoleForEmail(db: Db, email: string): Promise<Role | null> {
+  return (await resolveAccessForEmail(db, email))?.role ?? null;
 }
 
 /**
@@ -55,11 +72,13 @@ export async function resolveSessionUser(db: Db, raw: RawSessionUser): Promise<A
     return null;
   }
 
-  const role = await resolveRoleForEmail(db, raw.email);
+  const access = await resolveAccessForEmail(db, raw.email);
 
-  if (!role) {
+  if (!access) {
     return null;
   }
+
+  const { role, links } = access;
 
   if (raw.role !== role) {
     try {
@@ -76,5 +95,6 @@ export async function resolveSessionUser(db: Db, raw: RawSessionUser): Promise<A
     name: raw.name,
     role,
     orgId: raw.orgId ?? "default",
+    links,
   };
 }

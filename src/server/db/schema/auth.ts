@@ -1,5 +1,8 @@
 import { boolean, pgTable, text } from "drizzle-orm/pg-core";
 import { ts } from "./_cols";
+import { legacyFreelancers } from "./core";
+import { companies } from "./crm";
+import { agencies } from "./team";
 
 // Tables required by Better Auth (drizzle adapter, pg provider).
 export const user = pgTable("user", {
@@ -56,9 +59,18 @@ export const verification = pgTable("verification", {
   updatedAt: ts("updated_at").notNull(),
 }).enableRLS();
 
+/**
+ * Who may sign in, and as what. Outside people are linked to one record: a client to a company,
+ * a freelancer to a freelancer, a partner agency to an agency. Deleting that record removes the row,
+ * which ends their access.
+ */
 export const allowedEmails = pgTable("allowed_emails", {
   email: text("email").primaryKey(),
   orgId: text("org_id").notNull().default("default"),
   role: text("role").notNull().default("MEMBER"),
+  companyId: text("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  freelancerId: text("freelancer_id").references(() => legacyFreelancers.id, { onDelete: "cascade" }),
+  agencyId: text("agency_id").references(() => agencies.id, { onDelete: "cascade" }),
+  createdBy: text("created_by"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }).enableRLS();
