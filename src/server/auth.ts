@@ -29,6 +29,12 @@ function createAuth() {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       },
     },
+    session: {
+      // Keeps a signed copy of the session in the cookie for five minutes, so most requests skip the
+      // session and user lookups. The allowlist is still checked on every request (see session-user.ts),
+      // so removing someone ends their access at once.
+      cookieCache: { enabled: true, maxAge: 5 * 60 },
+    },
     user: {
       additionalFields: {
         role: { type: "string", required: false, defaultValue: "MEMBER", input: false },

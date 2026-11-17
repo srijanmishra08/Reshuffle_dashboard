@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { pollWhileVisible } from "@/lib/poll";
 import { formatINR } from "@/server/lib/money";
 import { KpiGrid } from "@/components/kpi-grid";
 import { dealStageLabels, type DealStage } from "@/server/models/deals";
@@ -47,11 +48,11 @@ export function OverviewDashboard() {
         })
         .catch((e) => alive && setError(e instanceof Error ? e.message : "Could not load overview"));
     const first = setTimeout(load, 0);
-    const poll = setInterval(load, 60_000);
+    const stop = pollWhileVisible(load, 120_000);
     return () => {
       alive = false;
       clearTimeout(first);
-      clearInterval(poll);
+      stop();
     };
   }, []);
 

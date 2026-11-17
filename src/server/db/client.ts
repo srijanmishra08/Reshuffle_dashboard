@@ -14,7 +14,15 @@ declare global {
 /**
  * Runtime connection through the Supabase transaction pooler (`DATABASE_URL`, port 6543).
  * Transaction pooling does not support prepared statements, hence `prepare: false`.
- * One connection per serverless instance; the pooler fans connections in.
+ *
+ * The client is created once per server instance and reused for every request, in production as well
+ * as in development. It must never be created per call: each new client opens its own TCP and TLS
+ * connection to the pooler and was never closed, so under load the pooler ran out of connections and
+ * queries waited until they were cancelled.
+ *
+ * `max` lets the queries of one request run side by side. `idle_timeout` returns idle connections to the
+ * pooler quickly so a quiet instance holds none, and `connect_timeout` makes an unreachable database
+ * fail in seconds instead of hanging the request.
  */
 export function getDb(): Db {
   if (global.dbInstance) {
@@ -27,13 +35,12 @@ export function getDb(): Db {
     throw new Error("Missing required environment variable: DATABASE_URL");
   }
 
-  const db = drizzle(postgres(url, { prepare: false, max: 1, ssl: "require" }), { schema });
+  global.dbInstance = drizzle(
+    postgres(url, { prepare: false, max: 4, idle_timeout: 20, connect_timeout: 10, max_lifetime: 60 * 30, ssl: "require" }),
+    { schema }
+  );
 
-  if (process.env.NODE_ENV !== "production") {
-    global.dbInstance = db;
-  }
-
-  return db;
+  return global.dbInstance;
 }
 
 export { schema };

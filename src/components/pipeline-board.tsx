@@ -134,7 +134,7 @@ function PipelineBoardInner({ module, assignees }: PipelineBoardProps) {
       void refreshItems().catch(() => {
         setMessage("Could not refresh pipeline items");
       });
-    }, 20000);
+    }, 30000);
 
     const onFocus = () => {
       if (writesInFlight.current > 0) {

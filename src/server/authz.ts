@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getAuth } from "@/server/auth";
@@ -17,8 +18,11 @@ function deny(status: 401 | 403, error: string): Guard {
   return { ok: false, response: NextResponse.json({ error }, { status }) };
 }
 
-/** The signed-in user as their own account, ignoring any portal preview. */
-export async function getRealSessionUser(): Promise<AuthedUser | null> {
+/**
+ * The signed-in user as their own account, ignoring any portal preview. Wrapped in React's `cache`, so the layout,
+ * page and components of one page render share a single lookup instead of repeating it.
+ */
+export const getRealSessionUser = cache(async (): Promise<AuthedUser | null> => {
   const session = await getAuth().api.getSession({ headers: await headers() });
   const user = session?.user as
     | (NonNullable<typeof session>["user"] & { role?: string; orgId?: string; active?: boolean })
@@ -29,7 +33,7 @@ export async function getRealSessionUser(): Promise<AuthedUser | null> {
   }
 
   return resolveSessionUser(getDb(), user);
-}
+});
 
 async function previewRoleFromCookie() {
   try {
@@ -45,12 +49,12 @@ async function previewRoleFromCookie() {
  * Resolve the acting user from the request cookies, or null. An admin who is previewing a portal
  * acts as that portal's role against demo data; nobody else can preview.
  */
-export async function getSessionUser(): Promise<AuthedUser | null> {
+export const getSessionUser = cache(async (): Promise<AuthedUser | null> => {
   const real = await getRealSessionUser();
   if (!real || real.role !== "ADMIN") return real;
   const as = await previewRoleFromCookie();
   return as ? previewUser(real, as) : real;
-}
+});
 
 /** Guard for starting or ending a preview and managing demo data: the real account must be an admin. */
 export async function requireRealAdmin(): Promise<Guard> {
