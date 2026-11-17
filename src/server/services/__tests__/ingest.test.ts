@@ -164,6 +164,25 @@ describe("saving a PDF", () => {
     expect(wo.invoiceLinked).toBe(false);
   });
 
+  it("does not attach a test PDF that merely reuses a real invoice's number", async () => {
+    const { storage } = fakeStorage();
+    const company = must(await createCompany(db, ctx, { name: "Real Client Pvt Ltd" }));
+    const [inv] = await db.insert(schema.invoices).values({ orgId: "default", companyId: company.id, status: "ISSUED", number: "RESHUFFLE/2026/05/01", totalPaise: 11_800_000 }).returning();
+    // The test from the screenshot: default number, made-up client, small total.
+    const test = must(await ingestDocument(db, key, { ...meta, number: "RESHUFFLE/2026/05/01", partyName: "asd", amountText: "₹1,180.00" }, pdf("test invoice"), storage));
+    expect(test.invoiceLinked).toBe(false);
+    expect(await db.select().from(schema.attachments).where(eq(schema.attachments.entityId, inv.id))).toHaveLength(0);
+    // Same number and same total: it is the real invoice, whatever the client was typed as.
+    const byTotal = must(await ingestDocument(db, key, { ...meta, number: "RESHUFFLE/2026/05/01", partyName: "Real Client", amountText: "₹1,18,000.00" }, pdf("real by total"), storage));
+    expect(byTotal.invoiceLinked).toBe(true);
+    // Same number and same client name, a different total (for example a revised draft): also linked.
+    const byName = must(await ingestDocument(db, key, { ...meta, number: "RESHUFFLE/2026/05/01", partyName: "real client pvt ltd", amountText: "₹5.00" }, pdf("real by name"), storage));
+    expect(byName.invoiceLinked).toBe(true);
+    expect(await db.select().from(schema.attachments).where(eq(schema.attachments.entityId, inv.id))).toHaveLength(2);
+    // Every upload is still saved and listed, linked or not.
+    expect(must(await listUploadedDocuments(db, ctx, { q: "asd" })).length).toBe(1);
+  });
+
   it("keeps different organisations' identical files apart", async () => {
     const { storage } = fakeStorage();
     const bytes = pdf("same bytes");
