@@ -140,6 +140,43 @@ describe("companies", () => {
   });
 });
 
+describe("calls and meetings tied to a lead", () => {
+  it("stores the lead on a touch or meeting, filters by it, and refuses another client's lead", async () => {
+    const client = must(await createCompany(db, ctx, { name: "Activity Client" }));
+    const other = must(await createCompany(db, ctx, { name: "Activity Other" }));
+    const leadA = must(await createDeal(db, ctx, { companyId: client.id, title: "Lead A" }));
+    const leadB = must(await createDeal(db, ctx, { companyId: client.id, title: "Lead B" }));
+    const foreign = must(await createDeal(db, ctx, { companyId: other.id, title: "Foreign" }));
+
+    const call = must(
+      await createInteraction(db, ctx, client.id, {
+        dealId: leadA.id,
+        type: "CALL",
+        summary: "1st call",
+        nextAction: "Send deck",
+        nextActionAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+    );
+    expect(call.dealId).toBe(leadA.id);
+    must(await createInteraction(db, ctx, client.id, { type: "NOTE", summary: "Client-level note" }));
+    must(await createInteraction(db, ctx, client.id, { dealId: leadB.id, type: "CALL", summary: "Other lead call" }));
+    const meeting = must(await createMeeting(db, ctx, client.id, { dealId: leadA.id, title: "1st meeting", at: new Date().toISOString() }));
+    expect(meeting.dealId).toBe(leadA.id);
+
+    expect(must(await listInteractions(db, ctx, client.id, leadA.id)).map((i) => i.summary)).toEqual(["1st call"]);
+    expect(must(await listInteractions(db, ctx, client.id)).length).toBe(3);
+    expect(must(await listMeetings(db, ctx, client.id, leadA.id)).map((m) => m.title)).toEqual(["1st meeting"]);
+    expect(must(await listMeetings(db, ctx, client.id, leadB.id))).toEqual([]);
+
+    expect(await createInteraction(db, ctx, client.id, { dealId: foreign.id, type: "CALL", summary: "x" })).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(await createMeeting(db, ctx, client.id, { dealId: foreign.id, title: "x", at: new Date().toISOString() })).toMatchObject({ ok: false, code: "VALIDATION" });
+
+    // A next action logged on a lead opens that lead from the follow-up list.
+    const due = must(await listDueFollowUps(db, ctx, new Date(Date.now() + 2 * 60 * 60 * 1000))).find((f) => f.id === call.id);
+    expect(due).toMatchObject({ kind: "TOUCH", dealId: leadA.id, href: `/sales/${leadA.id}` });
+  });
+});
+
 describe("follow-ups from leads", () => {
   const istDay = (offsetDays: number) => {
     const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);

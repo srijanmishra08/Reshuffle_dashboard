@@ -138,6 +138,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
                     <p className="text-xs text-slate-500">
                       {formatDate(entry.i.at)} · {entry.i.type}
                       {entry.i.contactName ? ` · ${entry.i.contactName}` : ""}
+                      {entry.i.dealId ? <> · <Link href={`/sales/${entry.i.dealId}`} className="underline">Lead</Link></> : null}
                     </p>
                     <p className="text-slate-900">{entry.i.summary}</p>
                     {entry.i.nextAction ? (
@@ -149,7 +150,10 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
                   </li>
                 ) : (
                   <li key={entry.m.id} className="border-l-2 border-sky-300 pl-3 text-sm">
-                    <p className="text-xs text-slate-500">{formatDate(entry.m.at)} · MEETING{entry.m.location ? ` · ${entry.m.location}` : ""}</p>
+                    <p className="text-xs text-slate-500">
+                      {formatDate(entry.m.at)} · MEETING{entry.m.location ? ` · ${entry.m.location}` : ""}
+                      {entry.m.dealId ? <> · <Link href={`/sales/${entry.m.dealId}`} className="underline">Lead</Link></> : null}
+                    </p>
                     <p className="text-slate-900">{entry.m.title}</p>
                     {entry.m.notes ? <p className="text-xs text-slate-500">{entry.m.notes}</p> : null}
                   </li>

@@ -72,6 +72,8 @@ export const contactPatchSchema = contactInputSchema.partial();
 
 export const interactionInputSchema = z.object({
   contactId: text(100),
+  /** The lead (deal) this touch is about, when it belongs to one. */
+  dealId: text(100),
   type: z.enum(interactionTypeValues),
   summary: z.string().trim().min(1, "Summary is required").max(5000),
   at: isoDateTime.optional(),
@@ -85,6 +87,8 @@ export const interactionPatchSchema = z.object({
 });
 
 export const meetingInputSchema = z.object({
+  /** The lead (deal) this meeting is about, when it belongs to one. */
+  dealId: text(100),
   title: z.string().trim().min(1, "Title is required").max(200),
   at: isoDateTime,
   location: text(300),

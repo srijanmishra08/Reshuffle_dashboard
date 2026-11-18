@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { useStaff } from "@/lib/use-staff";
+import { DealActivity } from "@/components/sales/deal-activity";
 import {
   canTransitionDeal,
   dealStageLabels,
@@ -65,7 +66,7 @@ export function DealDetail({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
-  const [tab, setTab] = useState<"details" | "diagnosis" | "scopes">("details");
+  const [tab, setTab] = useState<"details" | "activity" | "diagnosis" | "scopes">("details");
   const [form, setForm] = useState<Record<string, string>>({});
   const { staff } = useStaff();
   const [allModules, setAllModules] = useState<ModuleOption[]>([]);
@@ -289,7 +290,7 @@ export function DealDetail({ id }: { id: string }) {
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
       <div className="flex gap-1 border-b border-slate-200">
-        {(["details", "diagnosis", "scopes"] as const).map((t) => (
+        {(["details", "activity", "diagnosis", "scopes"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -506,6 +507,8 @@ export function DealDetail({ id }: { id: string }) {
           </button>
         </div>
       ) : null}
+
+      {tab === "activity" && deal.company ? <DealActivity dealId={id} companyId={deal.company.id} /> : null}
 
       {tab === "scopes" ? (
         <div className="space-y-3">

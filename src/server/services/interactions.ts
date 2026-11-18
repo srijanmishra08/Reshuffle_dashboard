@@ -18,6 +18,7 @@ const interactionColumns = {
   companyId: interactions.companyId,
   contactId: interactions.contactId,
   contactName: contacts.name,
+  dealId: interactions.dealId,
   type: interactions.type,
   summary: interactions.summary,
   at: interactions.at,
@@ -27,7 +28,17 @@ const interactionColumns = {
   createdAt: interactions.createdAt,
 };
 
-export async function listInteractions(db: Db, ctx: ServiceContext, companyId: string) {
+/** True when the deal exists in this organisation and belongs to this company. */
+async function dealBelongsTo(db: Db, orgId: string, companyId: string, dealId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: deals.id })
+    .from(deals)
+    .where(and(eq(deals.id, dealId), eq(deals.companyId, companyId), eq(deals.orgId, orgId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function listInteractions(db: Db, ctx: ServiceContext, companyId: string, dealId?: string | null) {
   const company = await getCompany(db, ctx, companyId);
   if (!company.ok) {
     return company;
@@ -37,7 +48,7 @@ export async function listInteractions(db: Db, ctx: ServiceContext, companyId: s
     .select(interactionColumns)
     .from(interactions)
     .leftJoin(contacts, eq(contacts.id, interactions.contactId))
-    .where(and(eq(interactions.companyId, companyId), eq(interactions.orgId, ctx.orgId)))
+    .where(and(eq(interactions.companyId, companyId), eq(interactions.orgId, ctx.orgId), dealId ? eq(interactions.dealId, dealId) : undefined))
     .orderBy(desc(interactions.at));
 
   return ok(rows);
@@ -92,6 +103,10 @@ export async function createInteraction(db: Db, ctx: ServiceContext, companyId: 
     return fail("VALIDATION", "A next-action date needs a description");
   }
 
+  if (input.dealId && !(await dealBelongsTo(db, ctx.orgId, companyId, input.dealId))) {
+    return fail("VALIDATION", "That lead does not belong to this company");
+  }
+
   const now = new Date();
   // Insert, touch the company and audit together: all or nothing.
   const id = await db.transaction(async (tx) => {
@@ -101,6 +116,7 @@ export async function createInteraction(db: Db, ctx: ServiceContext, companyId: 
         orgId: ctx.orgId,
         companyId,
         contactId: input.contactId ?? null,
+        dealId: input.dealId ?? null,
         type: input.type,
         summary: input.summary,
         at: input.at ? new Date(input.at) : now,
@@ -215,6 +231,7 @@ export async function listDueFollowUps(db: Db, ctx: ServiceContext, until?: Date
         id: interactions.id,
         companyId: interactions.companyId,
         companyName: companies.name,
+        dealId: interactions.dealId,
         nextAction: interactions.nextAction,
         nextActionAt: interactions.nextActionAt,
         type: interactions.type,
@@ -256,7 +273,7 @@ export async function listDueFollowUps(db: Db, ctx: ServiceContext, until?: Date
   const items: DueFollowUp[] = [
     ...touches.flatMap((t) =>
       t.nextActionAt
-        ? [{ id: t.id, kind: "TOUCH" as const, companyId: t.companyId, companyName: t.companyName, dealId: null, nextAction: t.nextAction, nextActionAt: t.nextActionAt, allDay: false, type: t.type, href: `/crm/${t.companyId}` }]
+        ? [{ id: t.id, kind: "TOUCH" as const, companyId: t.companyId, companyName: t.companyName, dealId: t.dealId, nextAction: t.nextAction, nextActionAt: t.nextActionAt, allDay: false, type: t.type, href: t.dealId ? `/sales/${t.dealId}` : `/crm/${t.companyId}` }]
         : []
     ),
     ...leads.flatMap((l) => {
@@ -284,7 +301,7 @@ export async function listDueFollowUps(db: Db, ctx: ServiceContext, until?: Date
   return ok(items);
 }
 
-export async function listMeetings(db: Db, ctx: ServiceContext, companyId: string) {
+export async function listMeetings(db: Db, ctx: ServiceContext, companyId: string, dealId?: string | null) {
   const company = await getCompany(db, ctx, companyId);
   if (!company.ok) {
     return company;
@@ -293,13 +310,14 @@ export async function listMeetings(db: Db, ctx: ServiceContext, companyId: strin
   const rows = await db
     .select()
     .from(meetings)
-    .where(and(eq(meetings.companyId, companyId), eq(meetings.orgId, ctx.orgId)))
+    .where(and(eq(meetings.companyId, companyId), eq(meetings.orgId, ctx.orgId), dealId ? eq(meetings.dealId, dealId) : undefined))
     .orderBy(desc(meetings.at));
 
   return ok(
     rows.map((row) => ({
       id: row.id,
       companyId: row.companyId,
+      dealId: row.dealId,
       title: row.title,
       at: row.at,
       location: row.location,
@@ -321,12 +339,16 @@ export async function createMeeting(db: Db, ctx: ServiceContext, companyId: stri
   }
 
   const input = parsed.data;
+  if (input.dealId && !(await dealBelongsTo(db, ctx.orgId, companyId, input.dealId))) {
+    return fail("VALIDATION", "That lead does not belong to this company");
+  }
   const now = new Date();
   const inserted = await db
     .insert(meetings)
     .values({
       orgId: ctx.orgId,
       companyId,
+      dealId: input.dealId ?? null,
       title: input.title,
       at: new Date(input.at),
       location: input.location ?? null,

@@ -39,6 +39,7 @@ export type Interaction = {
   companyId: string;
   contactId: string | null;
   contactName: string | null;
+  dealId: string | null;
   type: "CALL" | "MEETING" | "WHATSAPP" | "EMAIL" | "NOTE" | "SITE_VISIT";
   summary: string;
   at: string;
@@ -49,6 +50,7 @@ export type Interaction = {
 
 export type Meeting = {
   id: string;
+  dealId: string | null;
   title: string;
   at: string;
   location: string | null;
