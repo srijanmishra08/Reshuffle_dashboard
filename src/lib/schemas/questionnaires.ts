@@ -56,6 +56,14 @@ export const questionnaireInputSchema = z.object({
     .transform((v) => (v === "" ? null : v))
     .nullable()
     .optional(),
+  /** The lead this form is for; its client is used as the form's client. */
+  dealId: z
+    .string()
+    .trim()
+    .max(100)
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
   questions: questionList,
 });
 
@@ -63,6 +71,13 @@ export const questionnairePatchSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).optional(),
   companyId: z
+    .string()
+    .trim()
+    .max(100)
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  dealId: z
     .string()
     .trim()
     .max(100)

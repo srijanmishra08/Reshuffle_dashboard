@@ -71,6 +71,27 @@ describe("module library", () => {
   });
 });
 
+describe("scopes that start from the lead's modules", () => {
+  it("seeds items from the modules chosen on the lead, and leaves explicit items alone", async () => {
+    const billing = must(await createModule(db, ctx, { name: "Seed Billing", category: "Finance", description: "Invoices", defaultDeliverables: "Invoice templates", defaultDays: 6, defaultPricePaise: 2_000_000 }));
+    const stock = must(await createModule(db, ctx, { name: "Seed Stock", category: "Operations", defaultDays: 4, defaultPricePaise: 1_500_000 }));
+    const lead = must(await createDeal(db, ctx, { companyName: "Seed Co", title: "Seeded", moduleIds: [stock.id, billing.id] }));
+
+    const seeded = must(await createScope(db, ctx, { dealId: lead.id, title: "Seeded scope" }));
+    expect(seeded.items.map((i) => i.title)).toEqual(["Seed Billing", "Seed Stock"]);
+    expect(seeded.items[0]).toMatchObject({ moduleId: billing.id, description: "Invoice templates", days: 6, pricePaise: 2_000_000 });
+    expect(seeded.items[1]).toMatchObject({ moduleId: stock.id, description: null, days: 4, pricePaise: 1_500_000 });
+    expect(seeded.totalPaise).toBe(3_500_000);
+    expect(seeded.timelineDays).toBe(10);
+
+    const explicit = must(await createScope(db, ctx, { dealId: lead.id, title: "Hand built", items: [{ title: "Custom work", pricePaise: 100 }] }));
+    expect(explicit.items.map((i) => i.title)).toEqual(["Custom work"]);
+
+    const plain = must(await createDeal(db, ctx, { companyName: "Seed Co", title: "No modules" }));
+    expect(must(await createScope(db, ctx, { dealId: plain.id, title: "Empty" })).items).toEqual([]);
+  });
+});
+
 describe("scopes", () => {
   it("rejects bad input, unknown deals and unknown modules", async () => {
     expect((await createScope(db, ctx, { dealId, title: "" })).ok).toBe(false);

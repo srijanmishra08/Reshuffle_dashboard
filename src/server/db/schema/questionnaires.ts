@@ -2,6 +2,7 @@ import { index, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
 import { companies } from "./crm";
+import { deals } from "./deals";
 
 export const questionTypeValues = [
   "short_text",
@@ -32,6 +33,8 @@ export const questionnaires = pgTable(
     id: text("id").primaryKey().$defaultFn(newId),
     orgId: text("org_id").notNull().default("default"),
     companyId: text("company_id").references(() => companies.id, { onDelete: "set null" }),
+    /** The lead this form was sent for, when there is one. It always belongs to `companyId`. */
+    dealId: text("deal_id").references(() => deals.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     questions: jsonb("questions").$type<Question[]>().notNull(),

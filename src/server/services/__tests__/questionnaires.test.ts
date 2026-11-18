@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb } from "@/test/db";
 import type { Db } from "@/server/db/client";
+import { createCompany } from "../companies";
+import { createDeal } from "../deals";
 import { defaultQuestions } from "@/lib/schemas/questionnaires";
 import {
   createQuestionnaire,
@@ -30,6 +32,28 @@ beforeAll(async () => {
   ({ db, cleanup } = await createTestDb());
 });
 afterAll(() => cleanup());
+
+describe("questionnaires for a lead", () => {
+  it("links a form to a lead, takes the lead's client, refuses a mismatch, and unlinks when the client changes", async () => {
+    const a = must(await createCompany(db, ctx, { name: "Form Client A" }));
+    const b = must(await createCompany(db, ctx, { name: "Form Client B" }));
+    const lead = must(await createDeal(db, ctx, { companyId: a.id, title: "Form lead" }));
+    const questions = defaultQuestions();
+
+    const form = must(await createQuestionnaire(db, ctx, { title: "For the lead", dealId: lead.id, questions }));
+    expect(form).toMatchObject({ dealId: lead.id, companyId: a.id });
+    expect(must(await listQuestionnaires(db, ctx)).find((f) => f.id === form.id)?.dealId).toBe(lead.id);
+
+    expect(await createQuestionnaire(db, ctx, { title: "Mismatch", companyId: b.id, dealId: lead.id, questions })).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(await createQuestionnaire(db, ctx, { title: "Nope", dealId: "nope", questions })).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    expect(await createQuestionnaire(db, other, { title: "Foreign", dealId: lead.id, questions })).toMatchObject({ ok: false, code: "NOT_FOUND" });
+
+    const moved = must(await updateQuestionnaire(db, ctx, form.id, { companyId: b.id }));
+    expect(moved).toMatchObject({ companyId: b.id, dealId: null });
+    const relinked = must(await updateQuestionnaire(db, ctx, form.id, { dealId: lead.id }));
+    expect(relinked).toMatchObject({ companyId: a.id, dealId: lead.id });
+  });
+});
 
 describe("questionnaires", () => {
   it("rejects a form with no questions or a choice question without options", async () => {

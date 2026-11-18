@@ -14,6 +14,7 @@ type Detail = {
   title: string;
   description: string;
   companyId: string | null;
+  dealId: string | null;
   status: "OPEN" | "CLOSED";
   questions: Question[];
   path: string;
@@ -33,10 +34,27 @@ export function QuestionnaireDetail({ id }: { id: string }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [companyId, setCompanyId] = useState("");
+  const [dealId, setDealId] = useState("");
+  const [leads, setLeads] = useState<{ id: string; title: string }[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    api<{ id: string; title: string }[]>(`/api/deals?companyId=${encodeURIComponent(companyId)}`)
+      .then((rows) => {
+        if (!cancelled) setLeads(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setLeads([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   const load = useCallback(
     async (keepEdits: boolean) => {
@@ -46,6 +64,7 @@ export function QuestionnaireDetail({ id }: { id: string }) {
         setTitle(data.title);
         setDescription(data.description);
         setCompanyId(data.companyId ?? "");
+        setDealId(data.dealId ?? "");
         setQuestions(data.questions);
         setDirty(false);
       }
@@ -93,7 +112,7 @@ export function QuestionnaireDetail({ id }: { id: string }) {
         ...q,
         options: choiceTypes.includes(q.type) ? q.options.map((o) => o.trim()).filter(Boolean) : [],
       }));
-      await api(`/api/questionnaires/${id}`, { method: "PATCH", ...jsonBody({ title, description, companyId, questions: cleaned }) });
+      await api(`/api/questionnaires/${id}`, { method: "PATCH", ...jsonBody({ title, description, companyId, dealId, questions: cleaned }) });
       await load(false);
       setMessage("Saved");
     });
@@ -160,7 +179,7 @@ export function QuestionnaireDetail({ id }: { id: string }) {
           </label>
           <label className={label}>
             Client (optional)
-            <select className={`${input} mt-1`} value={companyId} onChange={(e) => { setCompanyId(e.target.value); setDirty(true); }}>
+            <select className={`${input} mt-1`} value={companyId} onChange={(e) => { setCompanyId(e.target.value); setDealId(""); setDirty(true); }}>
               <option value="">No client</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -169,6 +188,17 @@ export function QuestionnaireDetail({ id }: { id: string }) {
               ))}
             </select>
           </label>
+          {companyId ? (
+            <label className={label}>
+              Lead (optional)
+              <select className={`${input} mt-1`} value={dealId} onChange={(e) => { setDealId(e.target.value); setDirty(true); }}>
+                <option value="">Not for a particular lead</option>
+                {leads.map((l) => (
+                  <option key={l.id} value={l.id}>{l.title}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className={`${label} md:col-span-2`}>
             Intro shown above the questions
             <textarea rows={2} className={`${input} mt-1`} value={description} onChange={(e) => { setDescription(e.target.value); setDirty(true); }} />

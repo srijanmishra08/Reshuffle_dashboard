@@ -9,7 +9,7 @@ import { allowRequest } from "@/server/lib/rate-limit";
 import { logActivity } from "@/server/services/activity";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { questionnaires, questionnaireResponses, companies } = schema;
+const { questionnaires, questionnaireResponses, companies, deals } = schema;
 
 function audit(db: Db, ctx: ServiceContext, action: string, id: string) {
   return logActivity(
@@ -27,6 +27,16 @@ async function companyInOrg(db: Db, ctx: ServiceContext, companyId: string) {
   return rows.length > 0;
 }
 
+/** The company a lead belongs to, or null when the lead is not in this organisation. */
+async function companyOfDeal(db: Db, ctx: ServiceContext, dealId: string): Promise<string | null> {
+  const rows = await db
+    .select({ companyId: deals.companyId })
+    .from(deals)
+    .where(and(eq(deals.id, dealId), eq(deals.orgId, ctx.orgId)))
+    .limit(1);
+  return rows[0]?.companyId ?? null;
+}
+
 export async function listQuestionnaires(db: Db, ctx: ServiceContext) {
   const rows = await db
     .select({
@@ -34,6 +44,7 @@ export async function listQuestionnaires(db: Db, ctx: ServiceContext) {
       title: questionnaires.title,
       status: questionnaires.status,
       companyId: questionnaires.companyId,
+      dealId: questionnaires.dealId,
       companyName: companies.name,
       createdAt: questionnaires.createdAt,
       responses: count(questionnaireResponses.id),
@@ -52,11 +63,19 @@ export async function createQuestionnaire(db: Db, ctx: ServiceContext, raw: unkn
   if (!parsed.success) return fail("VALIDATION", parsed.error.issues[0]?.message ?? "Invalid form", parsed.error.flatten());
   const input = parsed.data;
   if (input.companyId && !(await companyInOrg(db, ctx, input.companyId))) return fail("NOT_FOUND", "Client not found");
+  let companyId = input.companyId ?? null;
+  if (input.dealId) {
+    const dealCompany = await companyOfDeal(db, ctx, input.dealId);
+    if (!dealCompany) return fail("NOT_FOUND", "Lead not found");
+    if (companyId && companyId !== dealCompany) return fail("VALIDATION", "That lead belongs to a different client");
+    companyId = dealCompany;
+  }
   const [row] = await db
     .insert(questionnaires)
     .values({
       orgId: ctx.orgId,
-      companyId: input.companyId ?? null,
+      companyId,
+      dealId: input.dealId ?? null,
       title: input.title,
       description: input.description,
       questions: input.questions,
@@ -102,9 +121,19 @@ export async function updateQuestionnaire(db: Db, ctx: ServiceContext, id: strin
   if (!form) return fail("NOT_FOUND", "Questionnaire not found");
   const patch = parsed.data;
   if (patch.companyId && !(await companyInOrg(db, ctx, patch.companyId))) return fail("NOT_FOUND", "Client not found");
+  const changes: typeof patch = { ...patch };
+  if (patch.dealId) {
+    const dealCompany = await companyOfDeal(db, ctx, patch.dealId);
+    if (!dealCompany) return fail("NOT_FOUND", "Lead not found");
+    if (patch.companyId && patch.companyId !== dealCompany) return fail("VALIDATION", "That lead belongs to a different client");
+    changes.companyId = dealCompany;
+  } else if (patch.companyId !== undefined && patch.dealId === undefined && patch.companyId !== form.companyId) {
+    // Changing the client drops a lead that belonged to the old one.
+    changes.dealId = null;
+  }
   const [row] = await db
     .update(questionnaires)
-    .set({ ...patch, updatedAt: new Date() })
+    .set({ ...changes, updatedAt: new Date() })
     .where(eq(questionnaires.id, id))
     .returning();
   await audit(db, ctx, "updated", id);

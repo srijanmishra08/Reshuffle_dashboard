@@ -16,7 +16,7 @@ import { nextNumber } from "@/server/services/numbering";
 import { type DbOrTx, loadOrgSettings, todayIst } from "@/server/services/invoices";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { scopes, scopeItems, modulesLibrary, deals } = schema;
+const { scopes, scopeItems, modulesLibrary, deals, dealModules } = schema;
 
 type ScopeRow = typeof scopes.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -160,10 +160,36 @@ export async function createScope(db: Db, ctx: ServiceContext, raw: unknown) {
   const input = parsed.data;
 
   if (!(await findDeal(db, ctx.orgId, input.dealId))) return fail("NOT_FOUND", "Deal not found");
-  if (!(await modulesExist(db, ctx.orgId, input.items))) return fail("NOT_FOUND", "Module not found");
+
+  // A scope created with no items starts from the modules chosen on the lead, priced from the library.
+  let items = input.items;
+  if (items.length === 0) {
+    const chosen = await db
+      .select({
+        id: modulesLibrary.id,
+        name: modulesLibrary.name,
+        description: modulesLibrary.description,
+        deliverables: modulesLibrary.defaultDeliverables,
+        days: modulesLibrary.defaultDays,
+        price: modulesLibrary.defaultPricePaise,
+      })
+      .from(dealModules)
+      .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
+      .where(and(eq(dealModules.dealId, input.dealId), eq(modulesLibrary.orgId, ctx.orgId)))
+      .orderBy(asc(modulesLibrary.category), asc(modulesLibrary.name));
+    items = chosen.map((m) => ({
+      phase: "Phase 1",
+      moduleId: m.id,
+      title: m.name,
+      description: m.deliverables || m.description || null,
+      days: m.days,
+      pricePaise: m.price,
+    }));
+  }
+  if (!(await modulesExist(db, ctx.orgId, items))) return fail("NOT_FOUND", "Module not found");
 
   const id = newId();
-  const { totalPaise, timelineDays } = totals(input.items);
+  const { totalPaise, timelineDays } = totals(items);
   await db.transaction(async (tx: Tx) => {
     const max = await tx
       .select({ v: sql<number>`coalesce(max(${scopes.version}), 0)` })
@@ -183,7 +209,7 @@ export async function createScope(db: Db, ctx: ServiceContext, raw: unknown) {
       timelineDays,
       createdBy: ctx.userId,
     });
-    await insertItems(tx, id, input.items);
+    await insertItems(tx, id, items);
   });
   await audit(db, ctx, "created", id);
   return getScope(db, ctx, id);

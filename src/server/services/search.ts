@@ -6,8 +6,25 @@ import type { ServiceContext } from "@/server/services/companies";
 import { listDueFollowUps } from "@/server/services/interactions";
 import { todayIst } from "@/server/services/invoices";
 
-const { companies, contacts, deals, invoices, deliveryProjects, docs, legacyFreelancers, scopes, payouts, projectMilestones, projectTasks, questionnaires } =
-  schema;
+const {
+  companies,
+  contacts,
+  deals,
+  invoices,
+  deliveryProjects,
+  docs,
+  legacyFreelancers,
+  scopes,
+  payouts,
+  projectMilestones,
+  projectTasks,
+  questionnaires,
+  workOrders,
+  letters,
+  people,
+  events,
+  goals,
+} = schema;
 
 export type SearchHit = { type: string; id: string; title: string; subtitle: string; href: string };
 
@@ -24,7 +41,7 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
   if (query.length < 2) return ok([] as SearchHit[]);
   const p = likePattern(query);
 
-  const [companyRows, contactRows, dealRows, invoiceRows, projectRows, docRows, freelancerRows, taskRows, scopeRows, formRows] = await Promise.all([
+  const [companyRows, contactRows, dealRows, invoiceRows, projectRows, docRows, freelancerRows, taskRows, scopeRows, formRows, workOrderRows, letterRows, peopleRows, eventRows, goalRows] = await Promise.all([
     db
       .select({ id: companies.id, name: companies.name, lifecycle: companies.lifecycle })
       .from(companies)
@@ -88,6 +105,41 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
       .from(questionnaires)
       .where(and(eq(questionnaires.orgId, ctx.orgId), ilike(questionnaires.title, p)))
       .limit(PER_TYPE),
+    // Work orders, letters and team records are for admins and managers only, like their pages.
+    opts.includeBilling
+      ? db
+          .select({ id: workOrders.id, number: workOrders.number, status: workOrders.status, companyName: companies.name })
+          .from(workOrders)
+          .innerJoin(companies, eq(companies.id, workOrders.companyId))
+          .where(and(eq(workOrders.orgId, ctx.orgId), or(ilike(workOrders.number, p), ilike(companies.name, p), ilike(workOrders.jobDetails, p))))
+          .orderBy(desc(workOrders.createdAt))
+          .limit(PER_TYPE)
+      : Promise.resolve([]),
+    opts.includeBilling
+      ? db
+          .select({ id: letters.id, number: letters.number, subject: letters.subject, recipientName: letters.recipientName, status: letters.status })
+          .from(letters)
+          .where(and(eq(letters.orgId, ctx.orgId), or(ilike(letters.number, p), ilike(letters.subject, p), ilike(letters.recipientName, p))))
+          .orderBy(desc(letters.createdAt))
+          .limit(PER_TYPE)
+      : Promise.resolve([]),
+    opts.includeBilling
+      ? db
+          .select({ id: people.id, name: people.name, role: people.role })
+          .from(people)
+          .where(and(eq(people.orgId, ctx.orgId), or(ilike(people.name, p), ilike(people.email, p))))
+          .limit(PER_TYPE)
+      : Promise.resolve([]),
+    db
+      .select({ id: events.id, name: events.name, status: events.status, date: events.date })
+      .from(events)
+      .where(and(eq(events.orgId, ctx.orgId), or(ilike(events.name, p), ilike(events.partner, p))))
+      .limit(PER_TYPE),
+    db
+      .select({ id: goals.id, title: goals.title, status: goals.status, month: goals.month })
+      .from(goals)
+      .where(and(eq(goals.orgId, ctx.orgId), ilike(goals.title, p)))
+      .limit(PER_TYPE),
   ]);
 
   const hits: SearchHit[] = [
@@ -125,6 +177,23 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
       href: `/sales/${r.dealId}/scopes/${r.id}`,
     })),
     ...formRows.map((r) => ({ type: "Form", id: r.id, title: r.title, subtitle: r.status.toLowerCase(), href: `/questionnaires/${r.id}` })),
+    ...workOrderRows.map((r) => ({
+      type: "Work order",
+      id: r.id,
+      title: r.number ?? "Draft work order",
+      subtitle: `${r.companyName} · ${r.status.toLowerCase()}`,
+      href: `/work-orders/${r.id}`,
+    })),
+    ...letterRows.map((r) => ({
+      type: "Letter",
+      id: r.id,
+      title: r.subject || r.number || "Draft letter",
+      subtitle: `${r.recipientName || "No recipient"} · ${r.status.toLowerCase()}`,
+      href: `/letters/${r.id}`,
+    })),
+    ...peopleRows.map((r) => ({ type: "Person", id: r.id, title: r.name, subtitle: r.role, href: `/people/${r.id}` })),
+    ...eventRows.map((r) => ({ type: "Event", id: r.id, title: r.name, subtitle: [r.date, r.status.toLowerCase()].filter(Boolean).join(" · "), href: "/events" })),
+    ...goalRows.map((r) => ({ type: "Goal", id: r.id, title: r.title, subtitle: `${r.month} · ${r.status.toLowerCase().replace("_", " ")}`, href: "/goals" })),
   ];
   return ok(hits);
 }

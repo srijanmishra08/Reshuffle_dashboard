@@ -129,6 +129,24 @@ describe("links across the system", () => {
     expect(must(await globalSearch(db, other, "overdue")).filter((h) => h.type === "Task")).toEqual([]);
   });
 
+  it("also finds work orders, letters, people, events and goals, with team records limited to admins and managers", async () => {
+    await db.insert(schema.workOrders).values({ id: "wo-search", orgId: "default", companyId, status: "ISSUED", number: "WO/SEARCH/001" });
+    await db.insert(schema.letters).values({ id: "lt-search", orgId: "default", status: "DRAFT", subject: "Zebra agreement", recipientName: "Zed Person" });
+    await db.insert(schema.people).values({ id: "pp-search", orgId: "default", name: "Quincy Teammate", role: "Designer" });
+    await db.insert(schema.events).values({ id: "ev-search", orgId: "default", name: "Quokka Workshop" });
+    await db.insert(schema.goals).values({ id: "gl-search", orgId: "default", month: "2026-11", title: "Narwhal launch" });
+
+    const all = async (q: string, billing: boolean) => must(await globalSearch(db, ctx, q, { includeBilling: billing }));
+    expect((await all("WO/SEARCH", true)).find((h) => h.type === "Work order")?.href).toBe("/work-orders/wo-search");
+    expect((await all("Zebra", true)).find((h) => h.type === "Letter")?.href).toBe("/letters/lt-search");
+    expect((await all("Quincy", true)).find((h) => h.type === "Person")?.href).toBe("/people/pp-search");
+    expect((await all("Quokka", false)).find((h) => h.type === "Event")?.href).toBe("/events");
+    expect((await all("Narwhal", false)).find((h) => h.type === "Goal")?.href).toBe("/goals");
+
+    for (const q of ["WO/SEARCH", "Zebra", "Quincy"]) expect(await all(q, false)).toEqual([]);
+    expect(must(await globalSearch(db, other, "Quokka", { includeBilling: true }))).toEqual([]);
+  });
+
   it("raises overdue tasks and work waiting on the client as notices", async () => {
     const notices = must(await listNotices(db, ctx, { includeBilling: true }, now));
     expect(notices.find((n) => n.kind === "Task overdue")?.title).toContain("Overdue design");

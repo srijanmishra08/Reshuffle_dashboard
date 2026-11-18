@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatDate, localToIso, type Interaction, type Meeting } from "@/lib/crm-types";
@@ -17,6 +18,7 @@ export function DealActivity({ dealId, companyId }: { dealId: string; companyId:
   const base = `/api/companies/${companyId}`;
   const [touches, setTouches] = useState<Interaction[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [forms, setForms] = useState<{ id: string; title: string; status: string; responses: number }[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [touch, setTouch] = useState({ type: "CALL" as (typeof touchTypes)[number], summary: "", nextAction: "", nextActionAt: "" });
@@ -30,6 +32,9 @@ export function DealActivity({ dealId, companyId }: { dealId: string; companyId:
       ]);
       setTouches(t);
       setMeetings(m);
+      api<{ id: string; title: string; status: string; responses: number; dealId: string | null }[]>("/api/questionnaires")
+        .then((all) => setForms(all.filter((f) => f.dealId === dealId)))
+        .catch(() => setForms([]));
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the history");
@@ -107,6 +112,19 @@ export function DealActivity({ dealId, companyId }: { dealId: string; companyId:
         )}
       </section>
       <div className="space-y-4">
+        {forms.length > 0 ? (
+          <section className={card}>
+            <h3 className="text-sm font-semibold text-slate-800">Forms for this lead</h3>
+            <ul className="mt-2 space-y-1 text-sm">
+              {forms.map((f) => (
+                <li key={f.id}>
+                  <Link href={`/questionnaires/${f.id}`} className="text-slate-900 hover:underline">{f.title}</Link>
+                  <span className="text-xs text-slate-500"> · {f.status.toLowerCase()} · {Number(f.responses)} {Number(f.responses) === 1 ? "response" : "responses"}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <form onSubmit={logTouch} className={`${card} space-y-2`}>
           <h3 className="text-sm font-semibold text-slate-800">Log a call or message</h3>
           <select value={touch.type} onChange={(e) => setTouch({ ...touch, type: e.target.value as typeof touch.type })} className={input}>
