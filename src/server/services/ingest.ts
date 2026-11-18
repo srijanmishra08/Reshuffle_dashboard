@@ -132,8 +132,8 @@ async function noteIssue(db: Db, uploadId: string, issue: RecordIssue) {
 /**
  * Records an uploaded invoice as an issued invoice in the dashboard, keeping the number it already carries. The dashboard works
  * out the tax itself from the line items and only records the invoice if its total agrees with the PDF (within the rupee
- * rounding), so a typing slip cannot create a wrong invoice. The client must already exist unless `createClient` is set: a
- * test invoice with a made-up client therefore never creates a client or an invoice by itself.
+ * rounding), so a typing slip cannot create a wrong invoice. A client that is not in the dashboard yet is created when
+ * `createClient` is set (the upload path sets it: the key is made by an admin and is upload-only).
  */
 async function recordFromUpload(db: Db, ctx: ServiceContext, upload: UploadRow, opts: { createClient: boolean }) {
   const details = uploadedInvoiceDetailsSchema.safeParse(upload.details);
@@ -321,7 +321,7 @@ export async function ingestDocument(
   let recorded = false;
   let recordIssue: RecordIssue | null = null;
   if (m.docType === "INVOICE" && !invoiceId) {
-    const result = await recordFromUpload(db, { orgId: key.orgId, userId: "invoice-software" }, row, { createClient: false });
+    const result = await recordFromUpload(db, { orgId: key.orgId, userId: "invoice-software" }, row, { createClient: true });
     recorded = result.recorded;
     recordIssue = result.recorded ? null : result.issue;
   }

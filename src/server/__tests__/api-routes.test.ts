@@ -435,10 +435,10 @@ describe("invoice software upload", () => {
 
   it("tells the invoice software when an invoice could not be recorded, and why", async () => {
     const { token } = await makeKey("Details");
-    const json = JSON.stringify({ clientName: "Nobody Known Ltd", items: [{ description: "Work", amount: "500" }] });
+    const json = JSON.stringify({ clientName: "Some Client Ltd", items: [{ description: "Work", amount: "not a number" }] });
     const res = await upload({ token, bytes: pdfBytes("with details"), invoiceJson: json });
     expect(res.status).toBe(201);
-    expect(((await res.json()) as { data: { recorded: boolean; recordIssue: string } }).data).toMatchObject({ recorded: false, recordIssue: "NEW_CLIENT" });
+    expect(((await res.json()) as { data: { recorded: boolean; recordIssue: string } }).data).toMatchObject({ recorded: false, recordIssue: "BAD_ITEMS" });
   });
 
   it("gives no CORS permission to other websites", async () => {
