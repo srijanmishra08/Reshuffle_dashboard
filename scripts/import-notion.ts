@@ -1,6 +1,6 @@
 /**
  * Usage:
- *   npx tsx scripts/import-notion.ts <export-dir> [--only=clients,products,meetings] [--dry-run]
+ *   npx tsx scripts/import-notion.ts <export-dir> [--only=clients,products,meetings,reference-clients] [--dry-run]
  *
  * <export-dir> is an unzipped Notion "Markdown & CSV" export kept OUTSIDE this repo.
  * CSV files are found by name: any file whose name contains "client", "product" or "meeting"
@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/server/db/schema";
+import { importReferenceClients } from "../src/server/import/notion-deals";
 import { importNotion, type ImportInput, type ImportKind } from "../src/server/import/notion";
 
 const kinds: ImportKind[] = ["clients", "products", "meetings"];
@@ -56,6 +57,13 @@ async function main() {
     }
   }
 
+  let referenceCsv: string | undefined;
+  if (only.includes("reference-clients")) {
+    const match = csvs.find((file) => /reference/i.test(file));
+    if (match) referenceCsv = readFileSync(match, "utf8");
+    else console.warn("No CSV found for reference-clients");
+  }
+
   const client = postgres(databaseUrl, { max: 1, ssl: "require" });
   const report = await importNotion(drizzle(client, { schema }), input, { dryRun });
 
@@ -63,6 +71,11 @@ async function main() {
   for (const kind of kinds) {
     const r = report[kind];
     console.log(`${kind}: created ${r.created}, updated ${r.updated}, skipped ${r.skipped}`);
+    r.warnings.forEach((warning) => console.log(`  - ${warning}`));
+  }
+  if (referenceCsv) {
+    const r = await importReferenceClients(drizzle(client, { schema }), referenceCsv, { dryRun });
+    console.log(`reference-clients: created ${r.created}, updated ${r.updated}, skipped ${r.skipped}`);
     r.warnings.forEach((warning) => console.log(`  - ${warning}`));
   }
   await client.end();
