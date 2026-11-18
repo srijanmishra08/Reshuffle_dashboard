@@ -37,9 +37,8 @@ describe("marketing accounts", () => {
     expect(must(await listAccounts(db, ctx)).length).toBe(1);
   });
 
-  it("rejects unknown platform and unknown vertical", async () => {
+  it("rejects an unknown platform", async () => {
     expect((await createAccount(db, ctx, { platform: "MYSPACE", handle: "x" })).ok).toBe(false);
-    expect((await createAccount(db, ctx, { platform: "X", handle: "y", verticalId: "nope" })).ok).toBe(false);
   });
 
   it("refuses to delete an account that has content", async () => {

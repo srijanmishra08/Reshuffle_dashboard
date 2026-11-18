@@ -1,7 +1,7 @@
 import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
-import { companies, verticals } from "./crm";
+import { companies } from "./crm";
 
 const createdAt = () => ts("created_at").notNull().defaultNow();
 const updatedAt = () => ts("updated_at").notNull().defaultNow();
@@ -17,7 +17,6 @@ export const deals = pgTable(
     title: text("title").notNull(),
     stage: text("stage").notNull().default("LEAD"),
     valuePaise: integer("value_paise").notNull().default(0),
-    verticalId: text("vertical_id").references(() => verticals.id),
     engagementModel: text("engagement_model"),
     source: text("source"),
     referrer: text("referrer"),

@@ -13,23 +13,13 @@ import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { socialAccounts, contentItems, verticals } = schema;
+const { socialAccounts, contentItems } = schema;
 
 function audit(db: Db, ctx: ServiceContext, entityType: string, action: string, id: string) {
   return logActivity(
     { actorId: ctx.userId, action: `${entityType}.${action}`, module: "marketing", entityType, entityId: id },
     db
   );
-}
-
-async function checkVertical(db: Db, ctx: ServiceContext, verticalId: string | null | undefined) {
-  if (!verticalId) return true;
-  const rows = await db
-    .select({ id: verticals.id })
-    .from(verticals)
-    .where(and(eq(verticals.id, verticalId), eq(verticals.orgId, ctx.orgId)))
-    .limit(1);
-  return rows.length > 0;
 }
 
 async function checkAccount(db: Db, ctx: ServiceContext, accountId: string | null | undefined) {
@@ -66,7 +56,6 @@ export async function getAccount(db: Db, ctx: ServiceContext, id: string) {
 export async function createAccount(db: Db, ctx: ServiceContext, raw: unknown) {
   const parsed = accountInputSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION", "Invalid account", parsed.error.flatten());
-  if (!(await checkVertical(db, ctx, parsed.data.verticalId))) return fail("VALIDATION", "Unknown vertical");
   const id = newId();
   try {
     await db
@@ -85,7 +74,6 @@ export async function updateAccount(db: Db, ctx: ServiceContext, id: string, raw
   if (!parsed.success) return fail("VALIDATION", "Invalid account", parsed.error.flatten());
   const existing = await getAccount(db, ctx, id);
   if (!existing.ok) return existing;
-  if (!(await checkVertical(db, ctx, parsed.data.verticalId))) return fail("VALIDATION", "Unknown vertical");
   const { active, ...rest } = parsed.data;
   try {
     await db

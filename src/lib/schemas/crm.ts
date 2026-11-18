@@ -35,13 +35,14 @@ export const companyInputSchema = z.object({
     .optional(),
   stateCode: text(4),
   address: text(500),
-  verticalId: text(100),
   website: text(300),
   lifecycle: z.enum(companyLifecycleValues).optional(),
   ownerId: text(100),
   source: text(200),
   referrer: text(200),
   notes: text(5000),
+  /** The modules (SKUs) the client is in. On update the list replaces the old one. */
+  moduleIds: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
 });
 export type CompanyInput = z.infer<typeof companyInputSchema>;
 
@@ -95,7 +96,6 @@ export type MeetingInput = z.infer<typeof meetingInputSchema>;
 export const companyListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   lifecycle: z.enum(companyLifecycleValues).optional(),
-  verticalId: z.string().trim().max(100).optional(),
   /** Only clients with an open deal that includes this module (SKU). */
   moduleId: z.string().trim().max(100).optional(),
   ownerId: z.string().trim().max(100).optional(),

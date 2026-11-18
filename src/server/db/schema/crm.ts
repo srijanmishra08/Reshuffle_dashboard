@@ -15,20 +15,6 @@ export type CompanyLifecycle = (typeof companyLifecycleValues)[number];
 export const interactionTypeValues = ["CALL", "MEETING", "WHATSAPP", "EMAIL", "NOTE", "SITE_VISIT"] as const;
 export type InteractionType = (typeof interactionTypeValues)[number];
 
-export const verticals = pgTable(
-  "verticals",
-  {
-    id: id(),
-    orgId: orgId(),
-    name: text("name").notNull(),
-    description: text("description").notNull().default(""),
-    externalId: externalId(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (t) => [uniqueIndex("uq_verticals_org_name").on(t.orgId, t.name)]
-).enableRLS();
-
 export const companies = pgTable(
   "companies",
   {
@@ -40,7 +26,6 @@ export const companies = pgTable(
     gstin: text("gstin"),
     stateCode: text("state_code"),
     address: text("address"),
-    verticalId: text("vertical_id").references(() => verticals.id),
     website: text("website"),
     lifecycle: text("lifecycle").notNull().default("PROSPECT"),
     ownerId: text("owner_id"),
@@ -55,7 +40,6 @@ export const companies = pgTable(
   (t) => [
     index("idx_companies_org_list").on(t.orgId, t.archivedAt, t.updatedAt.desc()),
     index("idx_companies_org_lifecycle").on(t.orgId, t.lifecycle),
-    index("idx_companies_vertical").on(t.verticalId),
     uniqueIndex("uq_companies_org_external").on(t.orgId, t.externalId),
   ]
 ).enableRLS();

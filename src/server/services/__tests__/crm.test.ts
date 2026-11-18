@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb } from "@/test/db";
 import { eq } from "drizzle-orm";
 import { schema, type Db } from "@/server/db/client";
-import { archiveCompany, createCompany, getCompany, listCompanies, listVerticals, updateCompany } from "@/server/services/companies";
+import { archiveCompany, createCompany, getCompany, listCompanies, updateCompany } from "@/server/services/companies";
 import { createDeal, transitionDeal } from "@/server/services/deals";
 import { archiveContact, createContact, listContacts, updateContact } from "@/server/services/contacts";
 import {
@@ -32,29 +32,19 @@ function must<T>(result: { ok: true; data: T } | { ok: false; error: string }): 
   return result.data;
 }
 
-describe("verticals", () => {
-  it("seeds the 8 verticals", async () => {
-    const rows = must(await listVerticals(db, ctx));
-    expect(rows.map((r) => r.name)).toContain("Rice Mill");
-    expect(rows).toHaveLength(8);
-  });
-});
-
 describe("companies", () => {
   it("creates, reads and defaults lifecycle to PROSPECT", async () => {
-    const created = must(await createCompany(db, ctx, { name: "Example Traders", verticalId: "vertical-dairy" }));
+    const created = must(await createCompany(db, ctx, { name: "Example Traders" }));
     expect(created.lifecycle).toBe("PROSPECT");
-    expect(created.verticalName).toBe("Dairy");
+    expect(created.modules).toEqual([]);
     expect(created.ownerId).toBe("user-1");
   });
 
-  it("rejects bad input and unknown verticals", async () => {
+  it("rejects bad input", async () => {
     const empty = await createCompany(db, ctx, { name: "" });
     expect(empty.ok).toBe(false);
     const badGstin = await createCompany(db, ctx, { name: "X", gstin: "123" });
     expect(badGstin.ok).toBe(false);
-    const badVertical = await createCompany(db, ctx, { name: "X", verticalId: "nope" });
-    expect(badVertical).toMatchObject({ ok: false, code: "VALIDATION" });
   });
 
   it("filters by lifecycle and search, and searches legal name", async () => {
@@ -104,27 +94,40 @@ describe("companies", () => {
     expect((await updateCompany(db, ctx, company.id, { name: "  " })).ok).toBe(false);
   });
 
-  it("shows the modules (SKUs) a client is in, once each, and filters the list by module", async () => {
+  it("lets you set a client's modules (SKUs) when adding it and edit them later", async () => {
     await db.insert(schema.modulesLibrary).values([
       { id: "crm-mod-a", orgId: "default", name: "Billing" },
       { id: "crm-mod-b", orgId: "default", name: "Inventory" },
+      { id: "crm-mod-c", orgId: "default", name: "Reports" },
     ]);
-    const withBoth = must(await createCompany(db, ctx, { name: "Sku Client One" }));
-    const withB = must(await createCompany(db, ctx, { name: "Sku Client Two" }));
-    must(await createDeal(db, ctx, { companyId: withBoth.id, title: "First", moduleIds: ["crm-mod-a", "crm-mod-b"] }));
-    must(await createDeal(db, ctx, { companyId: withBoth.id, title: "Second", moduleIds: ["crm-mod-a"] }));
-    const lost = must(await createDeal(db, ctx, { companyId: withB.id, title: "Dropped", moduleIds: ["crm-mod-a"] }));
-    must(await transitionDeal(db, ctx, lost.id, { to: "LOST", lostReason: "no budget" }));
-    must(await createDeal(db, ctx, { companyId: withB.id, title: "Live", moduleIds: ["crm-mod-b"] }));
+    const added = must(await createCompany(db, ctx, { name: "Sku Client One", moduleIds: ["crm-mod-b", "crm-mod-a", "crm-mod-b"] }));
+    expect(added.modules.map((m) => m.name)).toEqual(["Billing", "Inventory"]);
 
-    expect(must(await getCompany(db, ctx, withBoth.id)).modules.map((m) => m.name)).toEqual(["Billing", "Inventory"]);
-    expect(must(await getCompany(db, ctx, withB.id)).modules.map((m) => m.name)).toEqual(["Inventory"]);
+    const swapped = must(await updateCompany(db, ctx, added.id, { moduleIds: ["crm-mod-c", "crm-mod-a"] }));
+    expect(swapped.modules.map((m) => m.name)).toEqual(["Billing", "Reports"]);
 
+    // Other edits leave the modules alone; an empty list clears them.
+    expect(must(await updateCompany(db, ctx, added.id, { notes: "x" })).modules).toHaveLength(2);
+    expect(must(await updateCompany(db, ctx, added.id, { moduleIds: [] })).modules).toEqual([]);
+
+    expect((await updateCompany(db, ctx, added.id, { moduleIds: ["nope"] })).ok).toBe(false);
+    expect((await createCompany(db, ctx, { name: "Bad Mod Client", moduleIds: ["nope"] })).ok).toBe(false);
+    expect(must(await listCompanies(db, ctx, { q: "Bad Mod Client" }))).toHaveLength(0);
+  });
+
+  it("adds a lead's modules to the client, keeps them if the deal is lost, and filters the list by module", async () => {
+    const client = must(await createCompany(db, ctx, { name: "Sku Client Two", moduleIds: ["crm-mod-a"] }));
+    const deal = must(await createDeal(db, ctx, { companyId: client.id, title: "Add inventory", moduleIds: ["crm-mod-b"] }));
+    expect(must(await getCompany(db, ctx, client.id)).modules.map((m) => m.name)).toEqual(["Billing", "Inventory"]);
+
+    must(await transitionDeal(db, ctx, deal.id, { to: "LOST", lostReason: "no budget" }));
+    expect(must(await getCompany(db, ctx, client.id)).modules).toHaveLength(2);
+
+    const inventory = must(await listCompanies(db, ctx, { moduleId: "crm-mod-b" })).map((c) => c.name);
+    expect(inventory).toEqual(["Sku Client Two"]);
     const billing = must(await listCompanies(db, ctx, { moduleId: "crm-mod-a" })).map((c) => c.name);
-    expect(billing).toEqual(["Sku Client One"]);
-    const inventory = must(await listCompanies(db, ctx, { moduleId: "crm-mod-b" })).map((c) => c.name).sort();
-    expect(inventory).toEqual(["Sku Client One", "Sku Client Two"]);
-    expect(must(await listCompanies(db, ctx, {})).find((c) => c.name === "Sku Client Two")?.modules).toHaveLength(1);
+    expect(billing).toEqual(["Sku Client Two"]);
+    expect(must(await listCompanies(db, ctx, { moduleId: "crm-mod-c" }))).toHaveLength(0);
   });
 
   it("will not archive a company that still has an open deal", async () => {

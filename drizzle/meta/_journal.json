@@ -176,6 +176,20 @@
       "when": 1794989668805,
       "tag": "0024_deal_modules",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794992475369,
+      "tag": "0025_drop_verticals",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794992693058,
+      "tag": "0026_company_modules",
+      "breakpoints": true
     }
   ]
 }

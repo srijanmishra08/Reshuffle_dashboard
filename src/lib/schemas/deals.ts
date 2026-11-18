@@ -23,7 +23,6 @@ const dealFields = z.object({
   companyName: z.string().trim().min(1, "Lead name is required").max(200).optional(),
   title: z.string().trim().min(1, "Title is required").max(200),
   valuePaise: z.number().int().min(0).max(100_000_000_000_00).default(0),
-  verticalId: optionalText(100),
   engagementModel: optionalText(100),
   source: optionalText(100),
   referrer: optionalText(200),
@@ -47,7 +46,6 @@ export const dealPatchSchema = dealFields.omit({ companyId: true, companyName: t
 
 export const dealListQuerySchema = z.object({
   stage: z.enum(dealStageValues).optional(),
-  verticalId: z.string().optional(),
   source: z.string().optional(),
   ownerId: z.string().optional(),
   temperature: z.enum(temperatureValues).optional(),

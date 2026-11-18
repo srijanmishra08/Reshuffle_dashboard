@@ -2,8 +2,6 @@ export type Lifecycle = "PROSPECT" | "ONBOARDING" | "ACTIVE" | "MAINTENANCE" | "
 
 export const lifecycleStages: Lifecycle[] = ["PROSPECT", "ONBOARDING", "ACTIVE", "MAINTENANCE", "CLOSED"];
 
-export type Vertical = { id: string; name: string };
-
 export type Company = {
   id: string;
   name: string;
@@ -11,8 +9,6 @@ export type Company = {
   gstin: string | null;
   stateCode: string | null;
   address: string | null;
-  verticalId: string | null;
-  verticalName: string | null;
   /** Modules (SKUs) on the client's deals that are not lost. */
   modules: { id: string; name: string }[];
   website: string | null;

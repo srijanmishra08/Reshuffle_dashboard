@@ -17,9 +17,9 @@
 | Clients board (process status, payment status, next meeting, WhatsApp role/onboarded/approved flags) | Notion → Reshuffle OS → Clients | **Companies + Contacts + Client lifecycle** |
 | Reference Client list (lead source, product type, quotation status, reason for not converting, current block) | Notion → Clients → Sales | **Deals (sales pipeline)** |
 | Sales "Essentials" pitch, sales outbound deck link | Notion → Sales → Essentials | **Docs / Playbooks** |
-| Products list (8 verticals: fertiliser, dairy, FMCG, law, interior, real estate, travel, rice mill) | Notion → Client CRM → Products | **Verticals + Module library** |
+| Products list (8 verticals: fertiliser, dairy, FMCG, law, interior, real estate, travel, rice mill) | Notion → Client CRM → Products | **Module library** (verticals were dropped on 2026-11-18; modules are how a client's project is classified) |
 | Monthly goals (April Goals DB) | Notion | **Goals** |
-| Marketing calendar + per-vertical social accounts | Notion → Marketing; dashboard `/social` | **Marketing** |
+| Marketing calendar + social accounts | Notion → Marketing; dashboard `/social` | **Marketing** |
 | Transactions, Invoices, Yearly breakdown, Proposal Tracker | Notion → Finance tracker | **Finance ledger + Invoices + Proposals** |
 | Event management + event team, workshop sheet, events doc | Notion → Events; Google Sheets/Docs | **Events** |
 | Projects & Tasks, Meetings, Resources & Notes, Freelancers Collaborations | Notion → Reshuffle OS | **Projects, Tasks, Meetings, Freelancers, Docs** |
@@ -39,7 +39,7 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 
 ### Functional
 1. **CRM:** companies, contacts, client lifecycle, timeline of every touch (call, meeting, WhatsApp, email, note), next-meeting and follow-up dates, attachments.
-2. **Sales pipeline:** deals from lead to won/lost, with source/referrer, vertical, deal value, quotation status, current block, lost reason, and the 8-level discovery / 5-bucket diagnosis captured on the deal.
+2. **Sales pipeline:** deals from lead to won/lost, with source/referrer, the modules the client needs, deal value, quotation status, current block, lost reason, and the 8-level discovery / 5-bucket diagnosis captured on the deal.
 3. **Scope Maker:** build a scope from a module library (plug-and-play modules + custom), with phases, deliverables, timeline, pricing, engagement model (Problem Diagnosis / Done For You / Dedicated Team / AI + Human Ops), terms and payment schedule. Versioned. Exported as PDF and shareable as a read-only link the client can accept.
 4. **Work orders:** generated from an accepted scope (or by hand), numbered, with line items and tax, signed off with a completed date.
 5. **Invoices:** GST tax invoices with consecutive numbering per financial year, CGST+SGST for intra-state and IGST for inter-state, advance/balance schedule, partial payments, overdue tracking, credit notes for cancellations. Amount in words (Indian lakh/crore format). PDF.
@@ -47,7 +47,7 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 7. **Projects:** a project is created from a won deal. It has milestones, tasks, an assigned freelancer team, linked documents and linked invoices.
 8. **Freelancers:** profile, skills, rate, availability, assignments, payouts, ratings, and their own limited view.
 9. **Finance:** ledger (income/expense/payout), expense categories, receivables and aging, a monthly breakdown, a GST summary export for filing, and the existing finance plan sheet persisted.
-10. **Marketing, Events, Goals, Docs:** social content calendar, per-vertical accounts, events with team and registrations, monthly goals, SOPs, decision log, asset library.
+10. **Marketing, Events, Goals, Docs:** social content calendar, social accounts, events with team and registrations, monthly goals, SOPs, decision log, asset library.
 11. **Overview:** real KPIs (pipeline value, won this month, receivables, overdue, active projects, freelancer load) replacing the hardcoded numbers in `src/lib/module-data.ts`.
 12. **Import:** one-time import of Notion data so nothing has to be retyped.
 
@@ -135,7 +135,8 @@ This is the audit the plan was written from. Almost all of it has been replaced:
 **What was actually built differs in a few places** (the list below is the design; `src/server/db/schema/*` is the truth, and `docs/ENTITY_DICTIONARY.md` lists the real tables):
 - There is no shared `documents` or `document_templates` table. Each issued record (invoice, work order, scope, letter, salary slip) keeps its own frozen `snapshot` and number.
 - Projects are `delivery_projects` with `project_milestones`, plus `project_tasks` and `task_comments`. The old `projects`, `tasks` and `clients` tables are legacy leftovers.
-- Added: `deal_modules` (the modules a lead needs, so modules work as SKUs), `scope_shares` and `scope_acceptances` (public accept link), `letters`, `questionnaires` and `questionnaire_responses`, `agencies` and `agency_freelancers`, `freelancer_assignments`, `payouts`, `finance_plans`, `ingest_keys` and `uploaded_documents` (invoice software link), `rate_limits`.
+- Removed on 2026-11-18: `verticals` and every `vertical_id` column (companies, deals, social accounts); modules replace them.
+- Added: `deal_modules` (the modules a lead needs, so modules work as SKUs), `company_modules` (the modules a client is in, editable on the client page), `scope_shares` and `scope_acceptances` (public accept link), `letters`, `questionnaires` and `questionnaire_responses`, `agencies` and `agency_freelancers`, `freelancer_assignments`, `payouts`, `finance_plans`, `ingest_keys` and `uploaded_documents` (invoice software link), `rate_limits`.
 - `allowed_emails` carries the role and the link to a company, freelancer or agency for outside sign-ins.
 - Not built: `assets`. The `automation_rules` table exists but nothing reads or evaluates it yet.
 
@@ -147,17 +148,16 @@ All tables have `id` (text, cuid2), `created_at`, `updated_at`, `created_by`. So
 - **number_series**: `doc_type`, `fy` (e.g. `2026-27`), `prefix`, `next_value`, `padding`. Atomic increment inside a transaction.
 
 ### CRM & sales
-- **companies**: name, legal name, GSTIN, state code, address, vertical_id, website, `lifecycle` (`PROSPECT | ONBOARDING | ACTIVE | MAINTENANCE | CLOSED`), owner_id, source, referrer, notes.
+- **companies**: name, legal name, GSTIN, state code, address, website, `lifecycle` (`PROSPECT | ONBOARDING | ACTIVE | MAINTENANCE | CLOSED`), owner_id, source, referrer, notes.
 - **contacts**: company_id, name, role, phone, email, whatsapp, `whatsapp_role` (`CLIENT | CLIENT_TEAM`), `onboarded`, `approved` (these carry over the Notion bot fields).
-- **verticals**: name (fertiliser, dairy, FMCG, law, interior, real estate, travel, rice mill…), description, product links.
-- **deals**: company_id, title, stage, value_paise, vertical_id, engagement_model, source, referrer, quotation_status, current_block, lost_reason, expected_close, next_follow_up, owner_id.
+- **deals**: company_id, title, stage, value_paise, engagement_model, source, referrer, quotation_status, current_block, lost_reason, expected_close, next_follow_up, owner_id.
 - **deal_stage_history**: deal_id, from, to, at, by (feeds conversion metrics).
 - **diagnoses**: deal_id, level (1–8), bucket (`REVENUE | MARKETING | OPERATIONS | CUSTOMER_EXPERIENCE | MANAGEMENT`), question, answer, pain_score. Captures the discovery call.
 - **interactions**: company_id, contact_id, deal_id, type (`CALL | MEETING | WHATSAPP | EMAIL | NOTE | SITE_VISIT`), summary, at, next_action, next_action_at.
 - **meetings**: company_id, deal_id, project_id, title, at, location/link, attendees (JSON), notes.
 
 ### Scopes & documents
-- **modules_library**: name, description, category (inventory, subscription, billing, CRM, landing page, …), default deliverables (JSON), default estimate_days, default_price_paise, vertical_ids (JSON).
+- **modules_library**: name, description, category (inventory, subscription, billing, CRM, landing page, …), default deliverables (JSON), default estimate_days, default_price_paise.
 - **scopes**: deal_id, company_id, title, version, status (`DRAFT | SENT | ACCEPTED | REJECTED | SUPERSEDED`), engagement_model, problem_statement, buckets (JSON), timeline_weeks, total_paise, payment_schedule (JSON: `[{label, percent, due_on}]`), terms, public_token, accepted_at, accepted_by_name.
 - **scope_items**: scope_id, module_id (nullable for custom), phase, title, description, deliverables (JSON), estimate_days, price_paise, sort.
 - **documents** (the engine's issued record): doc_type (`INVOICE | CREDIT_NOTE | WORK_ORDER | SCOPE | OFFER_LETTER | SALARY_SLIP | AGREEMENT | NDA | LETTER`), number, template_key, template_version, status, `snapshot_json` (all rendered data, frozen at issue), company_id, contact_id, project_id, person_id, pdf_blob_key, issued_at, issued_by, public_token.
@@ -188,7 +188,7 @@ All tables have `id` (text, cuid2), `created_at`, `updated_at`, `created_by`. So
 - **finance_plans**: the existing quarter projection sheets (`src/app/finance/page.tsx`), persisted as rows.
 
 ### Marketing, events, knowledge
-- **social_accounts**: vertical_id, platform, handle, url, owner.
+- **social_accounts**: platform, handle, url, owner.
 - **content_items**: account_id, title, script, platform, publish_on, status (`IDEA | DRAFT | SCHEDULED | POSTED`). Migrates the current `social_entries` table.
 - **events**: name, type (`SPRINT | WORKSHOP | IDEATHON | BOOTCAMP | MEETUP`), date, venue, status, capacity, ticket_price_paise, partner, notes. Plus **event_team** (person/role) and **event_registrations** (name, contact, paid, attended).
 - **goals**: period (month), title, team, priority, status, owner, due.
@@ -304,7 +304,7 @@ Enforced in three layers: `proxy.ts` (must be signed in), a `requireRole()` help
 2. **Import script:** `scripts/import-notion.ts <export-dir>` maps the CSVs to tables:
    - Clients → companies + contacts
    - Reference Client → deals
-   - Products → verticals
+   - Products (no longer imported; verticals were dropped)
    - April Goals → goals
    - Transactions → ledger_entries
    - Invoices → invoices (status only; historic PDFs attached as files, not re-rendered)

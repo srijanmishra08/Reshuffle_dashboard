@@ -11,7 +11,7 @@ The side menu is split into departments (`src/lib/navigation.ts`):
 | Department | Pages |
 |---|---|
 | Sales | Sales board (`/sales`), deal page with diagnosis and scopes (`/sales/[id]`), Scope Maker, Outreach (older board), Module library (`/settings/modules`) |
-| CRM | Clients (`/crm`, `/crm/[id]`; each client shows and filters by the modules it is in), Client projects, Questionnaires |
+| CRM | Clients (`/crm`, `/crm/[id]`; each client shows, edits and filters by the modules it is in), Client projects, Questionnaires |
 | Finance | Finance (ledger, receivables, monthly, GST, plan), Invoices (with the PDFs from the invoice software), Work orders |
 | Marketing | Marketing, Social media, Events |
 | Delivery | Projects (milestones and task boards), App development, Freelancers (assignments, payouts) |
@@ -33,7 +33,7 @@ Stored stage keys are unchanged; the labels follow how Reshuffle sells:
 | Client accepts; project starts ("Convert to project") | Accepted | `WON` |
 | Dropped (reason required) | Lost | `LOST` |
 
-Anyone on staff can add a lead by typing a new name; the company is created as a prospect, or reused when the name already exists. The lead records which sales node found it, who referred it, and which library modules the client needs. Modules are SKUs: a lead's value fills in from the sum of the chosen modules' library prices (you can still type a different value, for example after negotiating), and the modules show on the board card, the deal page and the client page.
+Anyone on staff can add a lead by typing a new name; the company is created as a prospect, or reused when the name already exists. The lead records which sales node found it, who referred it, and which library modules the client needs. Modules are SKUs: a lead's value fills in from the sum of the chosen modules' library prices (you can still type a different value, for example after negotiating), and the modules show on the board card and the deal page. The client page shows the modules the client is in; they can be edited there, and a lead's modules are added to its client.
 
 ## Stack
 

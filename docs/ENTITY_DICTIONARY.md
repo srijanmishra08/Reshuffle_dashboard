@@ -7,8 +7,8 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 | Area | Tables |
 |---|---|
 | Identity | `user`, `session`, `account`, `verification` (Better Auth), `allowed_emails` (who may sign in, their role, and the company, freelancer or agency they are linked to), `org_settings`, `number_series` |
-| CRM | `verticals`, `companies`, `contacts`, `interactions`, `meetings`, `attachments` |
-| Sales | `deals`, `deal_stage_history`, `diagnoses`, `deal_modules` (the modules a lead needs), `modules_library` (the SKUs), `scopes`, `scope_items`, `scope_shares` and `scope_acceptances` (public accept link) |
+| CRM | `companies`, `contacts`, `interactions`, `meetings`, `attachments` |
+| Sales | `deals`, `deal_stage_history`, `diagnoses`, `deal_modules` (the modules a lead needs), `company_modules` (the modules a client is in), `modules_library` (the SKUs), `scopes`, `scope_items`, `scope_shares` and `scope_acceptances` (public accept link) |
 | Billing | `invoices`, `invoice_items`, `payments`, `credit_notes`, `work_orders`, `work_order_items`, `letters` |
 | Invoice software link | `ingest_keys` (upload keys, stored hashed), `uploaded_documents` (PDFs sent by the invoice software) |
 | Delivery | `delivery_projects`, `project_milestones`, `project_tasks`, `task_comments`, `freelancers`, `freelancer_assignments`, `payouts`, `agencies`, `agency_freelancers` |
@@ -21,7 +21,7 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 
 ## How the main records link
 
-- A client's modules (SKUs) are not stored on the company: they are the modules on its deals that are not lost, shown on the CRM list, board and client page and usable as a list filter. Verticals are no longer shown in the CRM screens (the `verticals` table remains for the marketing pages and the Notion import).
+- A client's modules (SKUs) are stored in `company_modules`. They are edited on the client page or set when adding the client in the CRM, and a lead that is added with modules adds them to its client too (they are never removed automatically, so a lost deal does not take them away). The CRM list, board and client page show them and the list filters by module. Verticals no longer exist (table and columns dropped in migration `0025`); modules are how a client's project is classified.
 - A **company** (client) has contacts, interactions, meetings, deals, delivery projects, invoices, work orders and questionnaires.
 - A **deal** belongs to one company. It has stage history, diagnosis answers, the modules it needs (`deal_modules`), and scope versions. A deal's `value_paise` starts as the sum of its modules' `default_price_paise` and can be overridden.
 - An accepted scope plus a deal at Accepted (`WON`) converts to one **delivery project** with milestones taken from the payment schedule. Invoices and work orders link back to the project and scope.

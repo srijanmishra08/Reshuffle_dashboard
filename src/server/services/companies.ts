@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -9,15 +9,20 @@ import {
 } from "@/lib/schemas/crm";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
+import { resolveModules, setCompanyModules } from "@/server/services/module-links";
 
 export type ServiceContext = { orgId: string; userId: string };
 
-const { companies, verticals, interactions, deals, dealModules, modulesLibrary } = schema;
+const { companies, interactions, deals, companyModules, modulesLibrary } = schema;
 
-/** Earliest pending next-action date for a company. */
+/**
+ * Earliest pending next-action date for a company.
+ * `"companies"."id"` is written out on purpose: when a query selects from one table only, drizzle renders a column
+ * reference inside raw SQL without its table name, and inside this subquery a bare "id" would be interactions.id.
+ */
 const nextActionAt = sql<string | null>`(
   select min(${interactions.nextActionAt}) from ${interactions}
-  where ${interactions.companyId} = ${companies.id}
+  where ${interactions.companyId} = "companies"."id"
     and ${interactions.nextActionAt} is not null
     and ${interactions.nextActionDoneAt} is null
 )`;
@@ -29,8 +34,6 @@ const companyColumns = {
   gstin: companies.gstin,
   stateCode: companies.stateCode,
   address: companies.address,
-  verticalId: companies.verticalId,
-  verticalName: verticals.name,
   website: companies.website,
   lifecycle: companies.lifecycle,
   ownerId: companies.ownerId,
@@ -44,19 +47,15 @@ const companyColumns = {
 
 export type CompanyModule = { id: string; name: string };
 
-/**
- * The modules (SKUs) each client is in: every module on any of its deals that is not lost.
- * A client with two deals that both include Billing shows Billing once.
- */
+/** The modules (SKUs) each client is in, as set on the client page or added with its leads. */
 async function modulesByCompany(db: Db, orgId: string, companyIds: string[]): Promise<Map<string, CompanyModule[]>> {
   const byCompany = new Map<string, CompanyModule[]>();
   if (companyIds.length === 0) return byCompany;
   const rows = await db
-    .selectDistinct({ companyId: deals.companyId, id: modulesLibrary.id, name: modulesLibrary.name })
-    .from(dealModules)
-    .innerJoin(deals, eq(deals.id, dealModules.dealId))
-    .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
-    .where(and(eq(deals.orgId, orgId), inArray(deals.companyId, companyIds), ne(deals.stage, "LOST")))
+    .select({ companyId: companyModules.companyId, id: modulesLibrary.id, name: modulesLibrary.name })
+    .from(companyModules)
+    .innerJoin(modulesLibrary, eq(modulesLibrary.id, companyModules.moduleId))
+    .where(and(eq(companyModules.orgId, orgId), inArray(companyModules.companyId, companyIds)))
     .orderBy(asc(modulesLibrary.name));
   for (const r of rows) {
     const list = byCompany.get(r.companyId) ?? [];
@@ -76,12 +75,11 @@ export async function listCompanies(db: Db, ctx: ServiceContext, rawQuery: unkno
   const conditions = [eq(companies.orgId, ctx.orgId), isNull(companies.archivedAt)];
 
   if (query.lifecycle) conditions.push(eq(companies.lifecycle, query.lifecycle));
-  if (query.verticalId) conditions.push(eq(companies.verticalId, query.verticalId));
   if (query.ownerId) conditions.push(eq(companies.ownerId, query.ownerId));
   if (query.moduleId) {
     conditions.push(sql`exists (
-      select 1 from ${dealModules} dm join ${deals} d on d.id = dm.deal_id
-      where d.company_id = ${companies.id} and dm.module_id = ${query.moduleId} and d.stage <> 'LOST'
+      select 1 from ${companyModules} cm
+      where cm.company_id = "companies"."id" and cm.module_id = ${query.moduleId}
     )`);
   }
 
@@ -99,7 +97,6 @@ export async function listCompanies(db: Db, ctx: ServiceContext, rawQuery: unkno
   const rows = await db
     .select(companyColumns)
     .from(companies)
-    .leftJoin(verticals, eq(verticals.id, companies.verticalId))
     .where(and(...conditions))
     .orderBy(desc(companies.updatedAt))
     .limit(query.limit)
@@ -113,7 +110,6 @@ export async function getCompany(db: Db, ctx: ServiceContext, id: string) {
   const rows = await db
     .select(companyColumns)
     .from(companies)
-    .leftJoin(verticals, eq(verticals.id, companies.verticalId))
     .where(and(eq(companies.id, id), eq(companies.orgId, ctx.orgId), isNull(companies.archivedAt)))
     .limit(1);
 
@@ -122,51 +118,41 @@ export async function getCompany(db: Db, ctx: ServiceContext, id: string) {
   return ok({ ...rows[0], modules: modules.get(id) ?? [] });
 }
 
-async function verticalExists(db: Db, ctx: ServiceContext, verticalId: string) {
-  const rows = await db
-    .select({ id: verticals.id })
-    .from(verticals)
-    .where(and(eq(verticals.id, verticalId), eq(verticals.orgId, ctx.orgId)))
-    .limit(1);
-  return rows.length > 0;
-}
-
 export async function createCompany(db: Db, ctx: ServiceContext, raw: unknown) {
   const parsed = companyInputSchema.safeParse(raw);
   if (!parsed.success) {
     return fail("VALIDATION", "Invalid company", parsed.error.flatten());
   }
 
-  const input = parsed.data;
-
-  if (input.verticalId && !(await verticalExists(db, ctx, input.verticalId))) {
-    return fail("VALIDATION", "Unknown vertical");
-  }
+  const { moduleIds: requestedModules, ...input } = parsed.data;
+  const resolved = await resolveModules(db, ctx.orgId, requestedModules);
+  if (!resolved) return fail("VALIDATION", "Unknown module");
 
   const now = new Date();
-  const inserted = await db
-    .insert(companies)
-    .values({
-      orgId: ctx.orgId,
-      name: input.name,
-      legalName: input.legalName ?? null,
-      gstin: input.gstin ?? null,
-      stateCode: input.stateCode ?? null,
-      address: input.address ?? null,
-      verticalId: input.verticalId ?? null,
-      website: input.website ?? null,
-      lifecycle: input.lifecycle ?? "PROSPECT",
-      ownerId: input.ownerId ?? ctx.userId,
-      source: input.source ?? null,
-      referrer: input.referrer ?? null,
-      notes: input.notes ?? null,
-      createdBy: ctx.userId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ id: companies.id });
-
-  const id = inserted[0].id;
+  const id = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(companies)
+      .values({
+          orgId: ctx.orgId,
+          name: input.name,
+          legalName: input.legalName ?? null,
+          gstin: input.gstin ?? null,
+          stateCode: input.stateCode ?? null,
+          address: input.address ?? null,
+          website: input.website ?? null,
+          lifecycle: input.lifecycle ?? "PROSPECT",
+          ownerId: input.ownerId ?? ctx.userId,
+          source: input.source ?? null,
+          referrer: input.referrer ?? null,
+          notes: input.notes ?? null,
+          createdBy: ctx.userId,
+          createdAt: now,
+          updatedAt: now,
+      })
+      .returning({ id: companies.id });
+    await setCompanyModules(tx, ctx.orgId, inserted[0].id, resolved.ids);
+    return inserted[0].id;
+  });
 
   await logActivity(
     { actorId: ctx.userId, action: "company.created", module: "crm", entityType: "company", entityId: id, metadata: { name: input.name } },
@@ -187,24 +173,25 @@ export async function updateCompany(db: Db, ctx: ServiceContext, id: string, raw
     return existing;
   }
 
-  const patch = parsed.data;
-
-  if (patch.verticalId && !(await verticalExists(db, ctx, patch.verticalId))) {
-    return fail("VALIDATION", "Unknown vertical");
-  }
+  const { moduleIds: requestedModules, ...patch } = parsed.data;
+  const resolved = requestedModules === undefined ? undefined : await resolveModules(db, ctx.orgId, requestedModules);
+  if (resolved === null) return fail("VALIDATION", "Unknown module");
 
   const changes = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined)
   ) as Record<string, unknown>;
 
-  if (Object.keys(changes).length === 0) {
+  if (Object.keys(changes).length === 0 && !resolved) {
     return existing;
   }
 
-  await db
-    .update(companies)
-    .set({ ...changes, updatedAt: new Date() })
-    .where(and(eq(companies.id, id), eq(companies.orgId, ctx.orgId)));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(companies)
+      .set({ ...changes, updatedAt: new Date() })
+      .where(and(eq(companies.id, id), eq(companies.orgId, ctx.orgId)));
+    if (resolved) await setCompanyModules(tx, ctx.orgId, id, resolved.ids);
+  });
 
   const lifecycleChanged = patch.lifecycle && patch.lifecycle !== existing.data.lifecycle;
 
@@ -217,7 +204,7 @@ export async function updateCompany(db: Db, ctx: ServiceContext, id: string, raw
       entityId: id,
       metadata: lifecycleChanged
         ? { from: existing.data.lifecycle, to: patch.lifecycle }
-        : { fields: Object.keys(changes) },
+        : { fields: [...Object.keys(changes), ...(resolved ? ["modules"] : [])] },
     },
     db
   );
@@ -252,14 +239,4 @@ export async function archiveCompany(db: Db, ctx: ServiceContext, id: string) {
   );
 
   return ok({ id });
-}
-
-export async function listVerticals(db: Db, ctx: ServiceContext) {
-  const rows = await db
-    .select({ id: verticals.id, name: verticals.name, description: verticals.description })
-    .from(verticals)
-    .where(eq(verticals.orgId, ctx.orgId))
-    .orderBy(verticals.name);
-
-  return ok(rows);
 }

@@ -17,7 +17,6 @@ export const contentStatusSchema = z.enum(["IDEA", "DRAFT", "SCHEDULED", "PUBLIS
 export const accountInputSchema = z.object({
   platform: platformSchema,
   handle: z.string().trim().min(1, "Handle is required").max(100),
-  verticalId: z.string().min(1).nullable().optional(),
   plan: optionalText(2000),
   active: z.boolean().default(true),
 });
@@ -25,7 +24,6 @@ export const accountInputSchema = z.object({
 export const accountPatchSchema = z.object({
   platform: platformSchema.optional(),
   handle: z.string().trim().min(1).max(100).optional(),
-  verticalId: z.string().min(1).nullable().optional(),
   plan: optionalText(2000),
   active: z.boolean().optional(),
 });

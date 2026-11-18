@@ -1,14 +1,13 @@
 import { index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
-import { verticals } from "./crm";
 
 export const platformValues = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "FACEBOOK", "X", "WHATSAPP", "OTHER"] as const;
 export type Platform = (typeof platformValues)[number];
 export const contentStatusValues = ["IDEA", "DRAFT", "SCHEDULED", "PUBLISHED"] as const;
 export type ContentStatus = (typeof contentStatusValues)[number];
 
-/** One row per social account (usually one per vertical and platform). */
+/** One row per social account. */
 export const socialAccounts = pgTable(
   "social_accounts",
   {
@@ -16,7 +15,6 @@ export const socialAccounts = pgTable(
     orgId: text("org_id").notNull().default("default"),
     platform: text("platform").notNull(),
     handle: text("handle").notNull(),
-    verticalId: text("vertical_id").references(() => verticals.id),
     plan: text("plan"),
     active: text("active").notNull().default("true"),
     createdAt: ts("created_at").notNull().defaultNow(),

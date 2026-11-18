@@ -8,7 +8,7 @@ import { schema } from "@/server/db/client";
  * so re-running updates instead of duplicating. Never logs names or contact details.
  */
 
-export type ImportKind = "clients" | "products" | "meetings";
+export type ImportKind = "clients" | "meetings";
 
 export type KindReport = {
   created: number;
@@ -133,42 +133,8 @@ export async function importNotion(
 ): Promise<ImportReport> {
   const orgId = options.orgId ?? "default";
   const dryRun = options.dryRun;
-  const report: ImportReport = { clients: emptyReport(), products: emptyReport(), meetings: emptyReport(), dryRun };
-  const { verticals, companies, contacts, meetings } = schema;
-
-  // --- products -> verticals ------------------------------------------------
-  const verticalByName = new Map<string, string>();
-  const existingVerticals = await db.select().from(verticals).where(eq(verticals.orgId, orgId));
-  existingVerticals.forEach((row) => verticalByName.set(row.name.toLowerCase(), row.id));
-
-  if (input.products) {
-    for (const [index, rec] of toRecords(input.products).entries()) {
-      const name = pick(rec, ["name", "product", "vertical", "title"]);
-      if (!name) {
-        report.products.skipped++;
-        report.products.warnings.push(`products row ${index + 2}: no name`);
-        continue;
-      }
-
-      if (verticalByName.has(name.toLowerCase())) {
-        report.products.updated++;
-        continue;
-      }
-
-      report.products.created++;
-      const id = `planned:${slug(name)}`;
-      if (!dryRun) {
-        const now = new Date();
-        const inserted = await db
-          .insert(verticals)
-          .values({ orgId, name, description: pick(rec, ["description", "notes"]), externalId: `notion:products:${slug(name)}`, createdAt: now, updatedAt: now })
-          .returning({ id: verticals.id });
-        verticalByName.set(name.toLowerCase(), inserted[0].id);
-      } else {
-        verticalByName.set(name.toLowerCase(), id);
-      }
-    }
-  }
+  const report: ImportReport = { clients: emptyReport(), meetings: emptyReport(), dryRun };
+  const { companies, contacts, meetings } = schema;
 
   // --- clients -> companies + contacts -------------------------------------
   const companyByName = new Map<string, string>();
@@ -195,17 +161,10 @@ export async function importNotion(
         report.clients.warnings.push(`clients row ${index + 2}: unknown status "${statusKey}", used PROSPECT`);
       }
 
-      const verticalName = cleanRelation(pick(rec, ["product", "products", "vertical", "producttype"]));
-      const verticalId = verticalName ? verticalByName.get(verticalName.toLowerCase()) : undefined;
-      if (verticalName && !verticalId) {
-        report.clients.warnings.push(`clients row ${index + 2}: vertical not found, left empty`);
-      }
-
       const externalId = `notion:clients:${slug(companyName)}`;
       const values = {
         name: companyName,
         lifecycle,
-        verticalId: verticalId && !verticalId.startsWith("planned:") ? verticalId : null,
         source: pick(rec, ["leadsource", "source"]) || null,
         referrer: cleanRelation(pick(rec, ["referredby", "referrer"])) || null,
         notes: pick(rec, ["notes", "currentblock", "comments"]) || null,

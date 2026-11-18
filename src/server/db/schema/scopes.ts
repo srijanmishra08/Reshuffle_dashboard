@@ -1,6 +1,7 @@
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
+import { companies } from "./crm";
 import { deals } from "./deals";
 
 const createdAt = () => ts("created_at").notNull().defaultNow();
@@ -96,4 +97,19 @@ export const dealModules = pgTable(
       .references(() => modulesLibrary.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.dealId, t.moduleId] }), index("idx_deal_modules_module").on(t.moduleId)]
+).enableRLS();
+
+/** The modules (SKUs) a client is in. Edited on the client page; adding a lead with modules adds them here too. */
+export const companyModules = pgTable(
+  "company_modules",
+  {
+    orgId: text("org_id").notNull().default("default"),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    moduleId: text("module_id")
+      .notNull()
+      .references(() => modulesLibrary.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.moduleId] }), index("idx_company_modules_module").on(t.moduleId)]
 ).enableRLS();

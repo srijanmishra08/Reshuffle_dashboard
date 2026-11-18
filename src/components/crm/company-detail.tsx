@@ -36,6 +36,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [moduleOptions, setModuleOptions] = useState<{ id: string; name: string }[]>([]);
   const [message, setMessage] = useState("Loading...");
   const [loaded, setLoaded] = useState(false);
 
@@ -62,6 +63,9 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   }, [base]);
 
   useEffect(() => {
+    void api<{ id: string; name: string; active: boolean }[]>("/api/modules")
+      .then((rows) => setModuleOptions(rows.filter((m) => m.active)))
+      .catch(() => setMessage("Could not load modules"));
     const timer = window.setTimeout(() => {
       void load().catch((error: Error) => setMessage(error.message));
     }, 0);
@@ -97,6 +101,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
       <Header
         company={company}
+        moduleOptions={moduleOptions}
         onPatch={(patch) => run(() => api(base, { method: "PATCH", ...jsonBody(patch) }))}
         onArchive={async () => {
           if (!window.confirm(`Delete ${company.name}? It will be removed from the client list. Its deals, invoices and history are kept.`)) return;
@@ -202,12 +207,17 @@ function Header({
   company,
   onPatch,
   onArchive,
+  moduleOptions,
 }: {
   company: Company;
+  moduleOptions: { id: string; name: string }[];
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onArchive: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const selectedIds = company.modules.map((m) => m.id);
+  // Library modules, plus any the client has that were since switched off, so they can still be removed.
+  const moduleChoices = [...moduleOptions, ...company.modules.filter((m) => !moduleOptions.some((o) => o.id === m.id))];
   const [edit, setEdit] = useState({ name: "", legalName: "", website: "", address: "", source: "", referrer: "" });
   const startEdit = () => {
     setEdit({
@@ -236,18 +246,6 @@ function Header({
             ))}
           </select>
         </label>
-        <div className="text-xs font-medium text-slate-600">
-          Modules (SKUs)
-          <div className="mt-1 flex min-h-[2.25rem] flex-wrap items-center gap-1.5 text-sm font-normal">
-            {company.modules.length === 0 ? (
-              <span className="text-slate-400">None yet. Pick them on the deal in Sales.</span>
-            ) : (
-              company.modules.map((m) => (
-                <span key={m.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">{m.name}</span>
-              ))
-            )}
-          </div>
-        </div>
         <label className="text-xs font-medium text-slate-600">
           GSTIN
           <input value={gstin} onChange={(e) => setGstin(e.target.value)} onBlur={() => gstin !== (company.gstin ?? "") && void onPatch({ gstin })} className={`${inputClass} mt-1`} />
@@ -257,6 +255,29 @@ function Header({
           <input value={stateCode} onChange={(e) => setStateCode(e.target.value)} onBlur={() => stateCode !== (company.stateCode ?? "") && void onPatch({ stateCode })} className={`${inputClass} mt-1`} />
         </label>
       </div>
+      <fieldset className="mt-3 text-xs font-medium text-slate-600">
+        <legend>Modules (SKUs) this client is in</legend>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {moduleChoices.length === 0 ? <span className="font-normal text-slate-400">No modules in the library yet.</span> : null}
+          {moduleChoices.map((m) => {
+            const on = selectedIds.includes(m.id);
+            return (
+              <label
+                key={m.id}
+                className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-normal ${on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={on}
+                  onChange={() => void onPatch({ moduleIds: on ? selectedIds.filter((id) => id !== m.id) : [...selectedIds, m.id] })}
+                />
+                {m.name}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
       {editing ? (
         <form
           className="mt-3 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"

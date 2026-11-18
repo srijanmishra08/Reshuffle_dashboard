@@ -1,9 +1,9 @@
 /**
  * Usage:
- *   npx tsx scripts/import-notion.ts <export-dir> [--only=clients,products,meetings] [--dry-run]
+ *   npx tsx scripts/import-notion.ts <export-dir> [--only=clients,meetings] [--dry-run]
  *
  * <export-dir> is an unzipped Notion "Markdown & CSV" export kept OUTSIDE this repo.
- * CSV files are found by name: any file whose name contains "client", "product" or "meeting"
+ * CSV files are found by name: any file whose name contains "client" or "meeting"
  * (case-insensitive). Re-running is safe; rows are keyed on a stable external_id.
  * Prints counts and row numbers only, never names or contact details.
  */
@@ -14,7 +14,7 @@ import postgres from "postgres";
 import * as schema from "../src/server/db/schema";
 import { importNotion, type ImportInput, type ImportKind } from "../src/server/import/notion";
 
-const kinds: ImportKind[] = ["clients", "products", "meetings"];
+const kinds: ImportKind[] = ["clients", "meetings"];
 
 function findCsvs(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {

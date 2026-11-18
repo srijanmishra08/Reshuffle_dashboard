@@ -36,6 +36,8 @@ Phases 0 to 8 are built, merged and deployed. The "done when" boxes inside each 
 | 9. Integrations | Partial | Only the invoice software link (PDF upload and next invoice number). No email, WhatsApp, calendar or accounting sync. |
 | 10. Cutover | Not recorded | No record of the two-week parallel run or a tested restore. |
 
+Verticals were removed on 2026-11-18 (table, columns, API and screens; migration `0025`). Where the phases below mention verticals, modules (SKUs) took their place.
+
 Built beyond this plan: client, freelancer and agency portals with an admin preview, the departments menu, questionnaires, the project task board with client comments, the invoice software link, the Mumbai database move.
 
 

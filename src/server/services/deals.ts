@@ -11,6 +11,7 @@ import {
 import { newId } from "@/lib/ids";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
+import { addCompanyModules, resolveModules } from "@/server/services/module-links";
 import { canTransitionDeal, dealStageValues, type DealStage } from "@/server/models/deals";
 import type { ServiceContext } from "@/server/services/companies";
 
@@ -33,21 +34,6 @@ function audit(db: Db, ctx: ServiceContext, action: string, id: string, metadata
     { actorId: ctx.userId, action: `deal.${action}`, module: "sales", entityType: "deal", entityId: id, metadata },
     db
   );
-}
-
-/**
- * De-duplicated module ids and the sum of their library prices, or null when any of them is not a module of this
- * organisation. Modules are SKUs: a lead's value defaults to the sum of the prices of the modules it needs.
- */
-async function resolveModules(db: Db | Tx, orgId: string, ids: string[] | undefined): Promise<{ ids: string[]; pricePaise: number } | null> {
-  const unique = [...new Set(ids ?? [])];
-  if (unique.length === 0) return { ids: [], pricePaise: 0 };
-  const found = await db
-    .select({ id: modulesLibrary.id, price: modulesLibrary.defaultPricePaise })
-    .from(modulesLibrary)
-    .where(and(eq(modulesLibrary.orgId, orgId), inArray(modulesLibrary.id, unique)));
-  if (found.length !== unique.length) return null;
-  return { ids: unique, pricePaise: found.reduce((sum, m) => sum + m.price, 0) };
 }
 
 export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
@@ -104,7 +90,6 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
       companyId,
       title: input.title,
       valuePaise,
-      verticalId: input.verticalId ?? null,
       engagementModel: input.engagementModel ?? null,
       source: input.source ?? null,
       referrer: input.referrer ?? null,
@@ -124,6 +109,7 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
     });
     if (moduleIds.length > 0) {
       await tx.insert(dealModules).values(moduleIds.map((moduleId) => ({ orgId: ctx.orgId, dealId: id, moduleId })));
+      await addCompanyModules(tx, ctx.orgId, companyId, moduleIds);
     }
   });
   if (newCompanyId) {
@@ -161,6 +147,7 @@ export async function updateDeal(db: Db, ctx: ServiceContext, id: string, raw: u
       await tx.delete(dealModules).where(and(eq(dealModules.dealId, id), eq(dealModules.orgId, ctx.orgId)));
       if (moduleIds.length > 0) {
         await tx.insert(dealModules).values(moduleIds.map((moduleId) => ({ orgId: ctx.orgId, dealId: id, moduleId })));
+        await addCompanyModules(tx, ctx.orgId, existing.companyId, moduleIds);
       }
     }
   });
@@ -211,7 +198,6 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
 
   const conditions = [eq(deals.orgId, ctx.orgId)];
   if (q.stage) conditions.push(eq(deals.stage, q.stage));
-  if (q.verticalId) conditions.push(eq(deals.verticalId, q.verticalId));
   if (q.source) conditions.push(eq(deals.source, q.source));
   if (q.ownerId) conditions.push(eq(deals.ownerId, q.ownerId));
   if (q.temperature) conditions.push(eq(deals.temperature, q.temperature));
@@ -225,7 +211,6 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
       valuePaise: deals.valuePaise,
       companyId: deals.companyId,
       companyName: companies.name,
-      verticalId: deals.verticalId,
       source: deals.source,
       temperature: deals.temperature,
       quotationStatus: deals.quotationStatus,

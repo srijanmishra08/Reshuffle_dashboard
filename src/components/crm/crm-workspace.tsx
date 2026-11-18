@@ -27,6 +27,7 @@ export function CrmWorkspace() {
   const [message, setMessage] = useState("");
   const [newName, setNewName] = useState("");
   const [newSource, setNewSource] = useState("");
+  const [newModules, setNewModules] = useState<string[]>([]);
 
   // Only the newest load may write state; older (out-of-order) responses are dropped.
   const loadSeq = useRef(0);
@@ -72,10 +73,11 @@ export function CrmWorkspace() {
     try {
       await api<Company>("/api/companies", {
         method: "POST",
-        ...jsonBody({ name: newName, source: newSource || undefined }),
+        ...jsonBody({ name: newName, source: newSource || undefined, moduleIds: newModules }),
       });
       setNewName("");
       setNewSource("");
+      setNewModules([]);
       setMessage("Company added.");
       await load();
     } catch (error) {
@@ -119,6 +121,30 @@ export function CrmWorkspace() {
             Source
             <input value={newSource} onChange={(e) => setNewSource(e.target.value)} placeholder="Referral, event..." className={`${inputClass} mt-1 block`} />
           </label>
+          {moduleOptions.length > 0 ? (
+            <fieldset className="w-full text-xs font-medium text-slate-600">
+              <legend className="mb-1">Modules (SKUs), optional</legend>
+              <div className="flex flex-wrap gap-1.5">
+                {moduleOptions.map((m) => {
+                  const on = newModules.includes(m.id);
+                  return (
+                    <label
+                      key={m.id}
+                      className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-normal ${on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={on}
+                        onChange={() => setNewModules(on ? newModules.filter((id) => id !== m.id) : [...newModules, m.id])}
+                      />
+                      {m.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
           <button type="submit" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
             Add
           </button>
