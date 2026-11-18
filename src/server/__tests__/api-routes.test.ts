@@ -441,6 +441,24 @@ describe("invoice software upload", () => {
     expect(((await res.json()) as { data: { recorded: boolean; recordIssue: string } }).data).toMatchObject({ recorded: false, recordIssue: "BAD_ITEMS" });
   });
 
+  it("gives the invoice software the next invoice number for a month, only with a valid key", async () => {
+    const next = "/src/app/api/ingest/next-number/route.ts";
+    const { GET } = (await loaders[next]()) as { GET: Handler };
+    const ask = (query: string, token: string | null, from: string | null = origin) =>
+      GET(new NextRequest(`http://localhost/api/ingest/next-number?${query}`, { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(from ? { origin: from } : {}) } }), { params: Promise.resolve({}) });
+    const { token } = await makeKey("Numbers");
+
+    const res = await ask("prefix=RESHUFFLE&year=2031&month=3", token);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(((await res.json()) as { data: { number: string } }).data.number).toBe("RESHUFFLE/2031/03/01");
+
+    expect((await ask("year=2031&month=3", null)).status).toBe(401);
+    expect((await ask("year=2031&month=13", token)).status).toBe(400);
+    expect((await ask("year=2031&month=3&prefix=bad%20prefix", token)).status).toBe(400);
+    expect((await ask("year=2031&month=3", token, "https://evil.example")).headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("gives no CORS permission to other websites", async () => {
     const { token } = await makeKey("Other origin");
     const res = await upload({ token, fromOrigin: "https://evil.example", bytes: pdfBytes("other origin") });
