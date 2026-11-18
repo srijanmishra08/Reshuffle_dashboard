@@ -85,6 +85,17 @@ export function CrmWorkspace() {
     }
   }
 
+  async function deleteCompany(company: Company) {
+    if (!window.confirm(`Delete ${company.name}? It will be removed from the client list. Its deals, invoices and history are kept.`)) return;
+    try {
+      await api(`/api/companies/${company.id}`, { method: "DELETE" });
+      setMessage(`${company.name} deleted.`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not delete the client");
+    }
+  }
+
   async function moveCompany(company: Company, to: Lifecycle) {
     const previous = companies;
     // Invalidate any in-flight load so it cannot overwrite this optimistic move.
@@ -168,12 +179,13 @@ export function CrmWorkspace() {
                 <th className="px-4 py-3">Vertical</th>
                 <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Next action</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {companies.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">No companies yet.</td>
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">No companies yet.</td>
                 </tr>
               ) : null}
               {companies.map((company) => (
@@ -186,6 +198,10 @@ export function CrmWorkspace() {
                   <td className="px-4 py-3">{company.source ?? ""}</td>
                   <td className={`px-4 py-3 ${isOverdue(company.nextActionAt) ? "font-medium text-red-700" : ""}`}>
                     {formatDate(company.nextActionAt)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
+                    <Link href={`/crm/${company.id}`} className="text-xs font-medium text-slate-700 hover:underline">Edit</Link>
+                    <button type="button" onClick={() => void deleteCompany(company)} className="ml-3 text-xs font-medium text-rose-700 hover:underline">Delete</button>
                   </td>
                 </tr>
               ))}

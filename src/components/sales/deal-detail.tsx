@@ -32,11 +32,13 @@ type Deal = {
   expectedClose: string | null;
   nextFollowUp: string | null;
   lostReason?: string | null;
+  modules: { id: string; name: string }[];
   company: { id: string; name: string; lifecycle: string } | null;
   history: { id?: string; fromStage: string | null; toStage: string; at: string }[];
   diagnosis: { bucket: string; totalPain: number; answered: number }[];
   diagnosisEntries: DiagnosisEntry[];
 };
+type ModuleOption = { id: string; name: string; category: string };
 type ScopeRow = {
   id: string;
   version: number;
@@ -62,6 +64,8 @@ export function DealDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState<"details" | "diagnosis" | "scopes">("details");
   const [form, setForm] = useState<Record<string, string>>({});
+  const [allModules, setAllModules] = useState<ModuleOption[]>([]);
+  const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Record<string, { answer: string; painScore: number }>>({});
 
   const apply = useCallback((d: Deal) => {
@@ -78,6 +82,7 @@ export function DealDetail({ id }: { id: string }) {
       expectedClose: d.expectedClose ?? "",
       nextFollowUp: d.nextFollowUp ?? "",
     });
+    setModuleIds(d.modules.map((m) => m.id));
     const next: Record<string, { answer: string; painScore: number }> = {};
     for (const e of d.diagnosisEntries) next[keyOf(e)] = { answer: e.answer, painScore: e.painScore };
     setAnswers(next);
@@ -85,8 +90,13 @@ export function DealDetail({ id }: { id: string }) {
 
   const load = useCallback(async () => {
     try {
-      const [d, s] = await Promise.all([api<Deal>(`/api/deals/${id}`), api<ScopeRow[]>(`/api/deals/${id}/scopes`)]);
+      const [d, s, m] = await Promise.all([
+        api<Deal>(`/api/deals/${id}`),
+        api<ScopeRow[]>(`/api/deals/${id}/scopes`),
+        api<ModuleOption[]>("/api/modules?active=true").catch(() => [] as ModuleOption[]),
+      ]);
       apply(d);
+      setAllModules(m);
       setScopes(s);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load deal");
@@ -132,6 +142,7 @@ export function DealDetail({ id }: { id: string }) {
               temperature: form.temperature || null,
               expectedClose: form.expectedClose || null,
               nextFollowUp: form.nextFollowUp || null,
+              moduleIds,
             }),
           })
         );
@@ -317,6 +328,32 @@ export function DealDetail({ id }: { id: string }) {
                 Referred by
                 <input value={form.referrer ?? ""} onChange={set("referrer")} className={input} />
               </label>
+              <fieldset className={`${label} sm:col-span-2`}>
+                <legend>Modules the client needs</legend>
+                {allModules.length === 0 ? (
+                  <p className="mt-1 text-slate-400">No modules in the library yet.</p>
+                ) : (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {allModules.map((m) => {
+                      const on = moduleIds.includes(m.id);
+                      return (
+                        <label
+                          key={m.id}
+                          className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={on}
+                            onChange={() => setModuleIds(on ? moduleIds.filter((x) => x !== m.id) : [...moduleIds, m.id])}
+                          />
+                          {m.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </fieldset>
               <label className={label}>
                 Quotation status
                 <select value={form.quotationStatus ?? "NONE"} onChange={set("quotationStatus")} className={input}>

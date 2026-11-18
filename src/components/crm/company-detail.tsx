@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { ClientHub } from "@/components/crm/client-hub";
@@ -31,6 +32,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function CompanyDetail({ companyId }: { companyId: string }) {
+  const router = useRouter();
   const [company, setCompany] = useState<Company | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
@@ -96,7 +98,20 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
     <div className="space-y-4">
       <Link href="/crm" className="text-sm text-slate-600 hover:underline">← All clients</Link>
 
-      <Header company={company} verticals={verticals} onPatch={(patch) => run(() => api(base, { method: "PATCH", ...jsonBody(patch) }))} />
+      <Header
+        company={company}
+        verticals={verticals}
+        onPatch={(patch) => run(() => api(base, { method: "PATCH", ...jsonBody(patch) }))}
+        onArchive={async () => {
+          if (!window.confirm(`Delete ${company.name}? It will be removed from the client list. Its deals, invoices and history are kept.`)) return;
+          try {
+            await api(base, { method: "DELETE" });
+            router.push("/crm");
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Could not delete the client");
+          }
+        }}
+      />
 
       {message ? <p className="text-sm text-slate-600">{message}</p> : null}
 
@@ -191,11 +206,27 @@ function Header({
   company,
   verticals,
   onPatch,
+  onArchive,
 }: {
   company: Company;
   verticals: Vertical[];
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  onArchive: () => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [edit, setEdit] = useState({ name: "", legalName: "", website: "", address: "", source: "", referrer: "" });
+  const startEdit = () => {
+    setEdit({
+      name: company.name,
+      legalName: company.legalName ?? "",
+      website: company.website ?? "",
+      address: company.address ?? "",
+      source: company.source ?? "",
+      referrer: company.referrer ?? "",
+    });
+    setEditing(true);
+  };
+  const setField = (key: keyof typeof edit) => (e: { target: { value: string } }) => setEdit({ ...edit, [key]: e.target.value });
   const [gstin, setGstin] = useState(company.gstin ?? "");
   const [stateCode, setStateCode] = useState(company.stateCode ?? "");
   const [notes, setNotes] = useState(company.notes ?? "");
@@ -229,9 +260,56 @@ function Header({
           <input value={stateCode} onChange={(e) => setStateCode(e.target.value)} onBlur={() => stateCode !== (company.stateCode ?? "") && void onPatch({ stateCode })} className={`${inputClass} mt-1`} />
         </label>
       </div>
-      <p className="mt-3 text-xs text-slate-500">
-        Source: {company.source ?? "n/a"}{company.referrer ? ` · Referred by ${company.referrer}` : ""}
-      </p>
+      {editing ? (
+        <form
+          className="mt-3 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onPatch(edit).then(() => setEditing(false));
+          }}
+        >
+          <label className="text-xs font-medium text-slate-600">
+            Name
+            <input required value={edit.name} onChange={setField("name")} className={`${inputClass} mt-1`} />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Legal name
+            <input value={edit.legalName} onChange={setField("legalName")} className={`${inputClass} mt-1`} />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Website
+            <input value={edit.website} onChange={setField("website")} className={`${inputClass} mt-1`} />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Address
+            <input value={edit.address} onChange={setField("address")} className={`${inputClass} mt-1`} />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Lead source
+            <input value={edit.source} onChange={setField("source")} className={`${inputClass} mt-1`} />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Referred by
+            <input value={edit.referrer} onChange={setField("referrer")} className={`${inputClass} mt-1`} />
+          </label>
+          <div className="flex gap-2 sm:col-span-2">
+            <button type="submit" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save changes</button>
+            <button type="button" onClick={() => setEditing(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700">Cancel</button>
+          </div>
+        </form>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">
+            {company.legalName ? `${company.legalName} · ` : ""}
+            Source: {company.source ?? "n/a"}{company.referrer ? ` · Referred by ${company.referrer}` : ""}
+            {company.website ? ` · ${company.website}` : ""}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={startEdit} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Edit details</button>
+            <button type="button" onClick={() => void onArchive()} className="rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Delete client</button>
+          </div>
+        </div>
+      )}
       <label className="mt-3 block text-xs font-medium text-slate-600">
         Notes
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (company.notes ?? "") && void onPatch({ notes })} rows={2} className={`${inputClass} mt-1`} />

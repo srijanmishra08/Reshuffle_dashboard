@@ -34,6 +34,40 @@ describe("deal stage rules", () => {
   });
 });
 
+describe("deal modules", () => {
+  async function addModule(name: string, orgId = ctx.orgId) {
+    const id = `mod-${name}`;
+    await db.insert(schema.modulesLibrary).values({ id, orgId, name });
+    return id;
+  }
+
+  it("attaches chosen modules to a new lead and returns them on the deal and the board list", async () => {
+    const billing = await addModule("Billing");
+    const crm = await addModule("CRM");
+    const deal = must(await createDeal(db, ctx, { companyName: "Module Lead Co", title: "Module lead", moduleIds: [crm, billing, crm] }));
+    expect(deal.modules.map((m) => m.name)).toEqual(["Billing", "CRM"]);
+    const listed = must(await listDeals(db, ctx)).find((d) => d.id === deal.id);
+    expect(listed?.modules.map((m) => m.name)).toEqual(["Billing", "CRM"]);
+  });
+
+  it("replaces the module list on update and leaves it alone when not sent", async () => {
+    const inventory = await addModule("Inventory");
+    const reports = await addModule("Reports");
+    const deal = must(await createDeal(db, ctx, { companyName: "Swap Co", title: "Swap", moduleIds: [inventory] }));
+    expect(must(await updateDeal(db, ctx, deal.id, { moduleIds: [reports] })).modules.map((m) => m.name)).toEqual(["Reports"]);
+    expect(must(await updateDeal(db, ctx, deal.id, { title: "Renamed" })).modules.map((m) => m.name)).toEqual(["Reports"]);
+    expect(must(await updateDeal(db, ctx, deal.id, { moduleIds: [] })).modules).toEqual([]);
+  });
+
+  it("rejects an unknown module or one from another organisation", async () => {
+    const foreign = await addModule("Foreign", "other");
+    expect((await createDeal(db, ctx, { companyName: "Bad Mod Co", title: "x", moduleIds: ["nope"] })).ok).toBe(false);
+    expect((await createDeal(db, ctx, { companyName: "Bad Mod Co", title: "x", moduleIds: [foreign] })).ok).toBe(false);
+    const rows = await db.select().from(schema.companies).where(eq(schema.companies.name, "Bad Mod Co"));
+    expect(rows).toHaveLength(0);
+  });
+});
+
 describe("deals", () => {
   it("creates a brand-new company from a typed lead name, as a PROSPECT with its sales node", async () => {
     const deal = must(
