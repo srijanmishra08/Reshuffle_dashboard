@@ -18,6 +18,27 @@ npm run db:migrate  # drizzle-kit migrate, added in Phase 0
 
 ---
 
+## Status as of 2026-11-18
+
+Phases 0 to 8 are built, merged and deployed. The "done when" boxes inside each phase below were written before the build and have not been ticked one by one; this table is the current picture. Items marked "not recorded" are things that need a human or live data, so no one has confirmed them.
+
+| Phase | State | Notes |
+|---|---|---|
+| 0. Foundations and lockdown | Done | Auth, Drizzle on Supabase Postgres, tests, CI file, Settings. Migrations now run on every production deploy. |
+| 1. CRM core | Done | Companies, contacts, interactions, meetings, follow-ups. Notion import built; a run on the real export is not recorded. |
+| 2. Documents, invoices, work orders | Built | GST engine, numbering, immutable snapshots, PDFs, payments, credit notes, work orders, letters, daily overdue cron. CA sign-off on the sample PDF is not recorded. |
+| 3. Sales pipeline and Scope Maker | Built | Deal board (lead entry by typed name, modules as SKUs, stage labels follow the sales process), diagnosis, scope versions, public accept link, convert to project. |
+| 4. People documents | Built | People with encrypted PAN and bank, salary slips (ADMIN only), offer letters. |
+| 5. Projects and freelancers | Built | Delivery projects, milestones, task boards, assignments, payouts, agencies. |
+| 6. Finance | Built | Ledger, receivables aging, monthly view, GST summary and CSV, finance plans. |
+| 7. Marketing, events, goals, docs | Built | `/marketing`, `/events`, `/goals`, `/docs`. Asset library not built. |
+| 8. Overview, search, notifications | Built | Real KPIs and feed, global search, notification bell. |
+| 9. Integrations | Partial | Only the invoice software link (PDF upload and next invoice number). No email, WhatsApp, calendar or accounting sync. |
+| 10. Cutover | Not recorded | No record of the two-week parallel run or a tested restore. |
+
+Built beyond this plan: client, freelancer and agency portals with an admin preview, the departments menu, questionnaires, the project task board with client comments, the invoice software link, the Mumbai database move.
+
+
 ## Patterns to mirror (from the current code)
 
 | Category | Source | Pattern |

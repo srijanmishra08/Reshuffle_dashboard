@@ -64,7 +64,9 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 
 ---
 
-## 3. Current state (audit, 2026-11-12, commit `323cab5`)
+## 3. Starting state (audit, 2026-11-12, commit `323cab5`)
+
+This is the audit the plan was written from. Almost all of it has been replaced: see `handoff.md` section 2 for what exists now. Kept for the reasoning.
 
 | Area | Reality |
 |---|---|
@@ -130,10 +132,17 @@ Out of scope for this plan: the iOS networking app, the public website (reshxffl
 
 ## 5. Data model
 
+**What was actually built differs in a few places** (the list below is the design; `src/server/db/schema/*` is the truth, and `docs/ENTITY_DICTIONARY.md` lists the real tables):
+- There is no shared `documents` or `document_templates` table. Each issued record (invoice, work order, scope, letter, salary slip) keeps its own frozen `snapshot` and number.
+- Projects are `delivery_projects` with `project_milestones`, plus `project_tasks` and `task_comments`. The old `projects`, `tasks` and `clients` tables are legacy leftovers.
+- Added: `deal_modules` (the modules a lead needs, so modules work as SKUs), `scope_shares` and `scope_acceptances` (public accept link), `letters`, `questionnaires` and `questionnaire_responses`, `agencies` and `agency_freelancers`, `freelancer_assignments`, `payouts`, `finance_plans`, `ingest_keys` and `uploaded_documents` (invoice software link), `rate_limits`.
+- `allowed_emails` carries the role and the link to a company, freelancer or agency for outside sign-ins.
+- Not built: `assets`. The `automation_rules` table exists but nothing reads or evaluates it yet.
+
 All tables have `id` (text, cuid2), `created_at`, `updated_at`, `created_by`. Soft delete via `archived_at` for business records. Money columns end in `_paise` (integer).
 
 ### Identity & settings
-- **users**: name, email, image, role (`ADMIN | MANAGER | MEMBER | FREELANCER`), `freelancer_id` (nullable link), active. Plus Better Auth's session/account tables.
+- **users**: name, email, image, role (`ADMIN | MANAGER | MEMBER | FREELANCER | CLIENT | AGENCY`), `freelancer_id` (nullable link), active. Plus Better Auth's session/account tables.
 - **org_settings** (one row): legal name, address, state code, GSTIN, PAN, bank details, default terms, logo/signature blob keys, signatory name/title, financial-year start month.
 - **number_series**: `doc_type`, `fy` (e.g. `2026-27`), `prefix`, `next_value`, `padding`. Atomic increment inside a transaction.
 
@@ -195,6 +204,8 @@ All tables have `id` (text, cuid2), `created_at`, `updated_at`, `created_by`. So
 
 ## 6. Core flow: lead to cash
 
+The sales steps, as Reshuffle runs them: (1) a sales node (sales staff, freelancer, agency or an individual) brings a lead; (2) first meeting with the founder or a consultant; (3) second meeting if needed, to understand the business and discuss the budget; (4) initial research, then strategy, budget and research summary go to the client; (5) the client accepts and sends a confirmation mail; (6) the project starts. A lead is entered by typing the client's name (no pre-existing client needed), with the sales node, the referrer and the modules the client needs. Modules are SKUs from the module library, and the lead's value defaults to the sum of their prices.
+
 ```
 Lead captured ──► Deal(LEAD) ──► CONTACTED ──► DIAGNOSED ──► PROPOSAL_SENT ──► NEGOTIATION ──► WON ──► (Company → ONBOARDING)
    │ source, referrer      discovery call:      Scope v1 built      client opens            │
@@ -220,8 +231,11 @@ Stage rules stay as config, extending the existing `pipelineModels` pattern in `
 ```
 deal:    LEAD → CONTACTED → DIAGNOSED → PROPOSAL_SENT → NEGOTIATION → WON
          any open stage → LOST (lost_reason required);  LOST → LEAD (reopen)
-invoice: DRAFT → ISSUED → PARTIALLY_PAID → PAID;  ISSUED/PARTIALLY_PAID → OVERDUE (cron);  ISSUED → CANCELLED (credit note required)
-scope:   DRAFT → SENT → ACCEPTED | REJECTED;  any → SUPERSEDED when v+1 is sent
+         open stages can be skipped (the 2nd meeting is optional)
+         board labels: New lead, 1st meeting, 2nd meeting · budget, Strategy sent, Awaiting confirmation, Accepted, Lost
+invoice: DRAFT → ISSUED → PARTIALLY_PAID → PAID;  ISSUED → CANCELLED (credit note required)
+         overdue is a flag (`overdue_at`) the daily cron sets on open invoices past their due date, not a status
+scope:   DRAFT → SENT → ACCEPTED;  SENT → SUPERSEDED when v+1 is sent (there is no REJECTED status)
 ```
 
 Side effects (run inline in the service, all logged to `activity_log`):
@@ -277,6 +291,8 @@ template (React-PDF component + version) + data (from DB) ─► preview (HTML r
 | Finance ledger, GST export | full | read | — | — |
 | Settings, number series, users | full | — | — | — |
 | Marketing, events, goals, docs | full | full | full | read published docs |
+
+Outside people use portals instead of the team pages and see only the records linked to their sign-in: CLIENT (own company: projects and progress, approve or request changes on work in review, invoices, proposals, forms), FREELANCER (own tasks, assignments, payouts) and AGENCY (its freelancers and their tasks and payouts). Admins grant and revoke access on `/access`.
 
 Enforced in three layers: `proxy.ts` (must be signed in), a `requireRole()` helper at the top of every route handler, and row-level filtering in services for FREELANCER/MEMBER.
 

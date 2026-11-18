@@ -19,33 +19,36 @@ This dashboard replaces all of them with one logged-in app. The spine of it is l
 
 ---
 
-## 2. What exists today
+## 2. What exists today (as of 2026-11-18)
 
-| Piece | State | Notes |
+Everything below is on `main` and deployed. The history, with the reasoning behind each piece, is the session log in section 10.
+
+| Area | State | Where |
 |---|---|---|
-| Auth | **Done (Phase 0)** | Better Auth, Google sign-in, allowlist, roles. `src/server/auth.ts`, `src/server/authz.ts`, `src/proxy.ts`. Every `/api/*` route calls `requireStaff()` or `requireRole()`. |
-| Database layer | **Done** | Drizzle on Supabase Postgres (`postgres-js`, transaction pooler). Schema in `src/server/db/schema/*`, migrations in `drizzle/`. Row level security is enabled on every table. |
-| Money, GST, numbering | **Done, tested** | `src/server/lib/money.ts`, `src/server/services/gst.ts`, `src/server/services/numbering.ts`. Not yet used by any UI (invoices are Phase 2). |
-| Settings (org, GSTIN, bank, signatory) | **Done, no uploads** | `/settings`, ADMIN only. Logo and signature uploads wait for Phase 2 (Vercel Blob). |
-| CRM (Phase 1) | **Built** | Companies, contacts, interactions, meetings, follow-ups, verticals. `/crm` (table + lifecycle board), `/crm/[id]`. APIs under `/api/companies`, `/api/followups`, `/api/verticals`. |
-| Notion import (clients, products, meetings) | **Built, untested on real export** | `scripts/import-notion.ts`, logic in `src/server/import/notion.ts`. Column names are guessed from the handoff, so run `--dry-run` on the real export and adjust the alias lists. |
-| UI shell, nav | Works | `src/components/dashboard-shell.tsx`, `src/lib/navigation.ts` |
-| Generic kanban boards | Works | `PipelineBoard` now polls every 20 s instead of SSE. Still backed by `pipeline_items` for social, projects, outreach, app-dev, events, etc. |
-| Pipeline transitions + activity log | Works | `src/server/services/pipeline.ts`, `activity.ts` (activity now uses Drizzle) |
-| Social, freelancers, projects, tasks, pipeline items | Work, legacy tables | Now Drizzle-backed services (`src/server/services/{social,freelancers,projects,tasks,pipeline-items}.ts`). Demo cards and demo freelancers are no longer seeded. Replaced by real domain tables in Phases 5 and 7. |
-| Overview KPIs + feed | **Real** | `services/overview.ts`: pipeline, wins, receivables, cash, projects, follow-ups, meetings, activity. Activity log is not org-scoped yet. |
-| Finance page | **Not persisted** | Phase 6 |
-| Events page | Fixed | Now shows the `events` pipeline board |
-| Removed | Gone | Prisma, tRPC, BullMQ worker, in-memory SSE realtime, automation trigger route, `/api/clients` |
-| Tests / CI | **Done** | Vitest (`npm test`), 37 tests. `.github/workflows/ci.yml` runs lint, tsc, test, build. |
+| Auth and access | Done | Better Auth, Google sign-in, email allowlist (`allowed_emails`, re-checked on every request so revoking is immediate). `src/server/auth.ts`, `authz.ts`, `session-user.ts`, `src/proxy.ts`. Public paths: `src/lib/public-paths.ts`. |
+| Roles and portals | Done | Staff: ADMIN, MANAGER, MEMBER. Outside people: CLIENT (`/portal`), FREELANCER (`/me`), AGENCY (`/agency`), each linked to one record and seeing only that (`services/portal.ts`). Admins grant access on `/access`. No invitation email yet; the admin sends the sign-in link. Admin-only portal preview with demo data. |
+| Menu | Done | Six departments (Sales, CRM, Finance, Marketing, Delivery, People & Admin) in `src/lib/navigation.ts`; `/d/<key>` landing pages. |
+| Sales | Done | `/sales` board and `/sales/[id]` deal page. Anyone on staff adds a lead by typing a name (new company created as a PROSPECT, or an existing one reused by name), with sales node, referrer and the modules the client needs. Modules are SKUs: the value fills in from their library prices. Stages and labels in `src/server/models/deals.ts` (keys `LEAD`, `CONTACTED`, `DIAGNOSED`, `PROPOSAL_SENT`, `NEGOTIATION`, `WON`, `LOST`; labels follow the sales process). 8-level diagnosis form, scope versions, Scope Maker (`/sales/[id]/scopes/[scopeId]`) built from the module library (`/settings/modules`), PDF, public accept link `/p/[token]`. |
+| Convert to project | Done | Needs the deal at Accepted (`WON`) and an accepted scope. Creates the delivery project and milestones from the payment schedule; the project page drafts invoices from milestones. |
+| CRM | Done | `/crm` (table and lifecycle board), `/crm/[id]` (edit details, delete, contacts, interactions, meetings, follow-ups, hub of deals, proposals, invoices, work orders, forms and portal sign-ins), `/crm/projects`, questionnaires (`/questionnaires`, public form `/p/form/[token]`). Delete archives the client and is refused while it has open deals. |
+| Invoices, work orders, credit notes | Done | GST engine (CGST+SGST or IGST), consecutive numbering per series, immutable issued snapshots, payments, credit notes, PDFs through `@react-pdf/renderer` (Noto Sans for the rupee sign), daily overdue cron. `/invoices` has two tabs: Invoices, and PDFs from the invoice software. `/work-orders`. |
+| Invoice software link | Done | The static `reshuffle-invoice` site uploads PDFs to `POST /api/ingest/documents` with a revocable key (made by admins on Invoices > PDFs). Uploaded invoices are recorded as dashboard invoices and `GET /api/ingest/next-number` gives the software the next number. Rules and fixes: session log, 2026-11-17 and 2026-11-18. |
+| Letters, people, salary slips | Done | `/letters` (numbered letters, offer letters, service agreements), `/people` (PAN and bank encrypted with `APP_ENCRYPTION_KEY`), salary slips ADMIN only. |
+| Delivery | Done | `/projects` (milestones, task board per project, links to client, deal, proposal, team, invoices), `/freelancers` (assignments, payouts), agencies, task comments, client sees a read-only board and can approve or request changes. `/app-dev` is still the legacy generic board. |
+| Finance | Done | `/finance`: ledger, receivables aging, monthly view, GST summary and B2B CSV, finance plans. |
+| Marketing, events, goals, docs | Done | `/marketing` (social accounts, content calendar), `/social` (legacy board), `/events` (team, registrations), `/goals`, `/docs` (versioned, searchable). |
+| Overview, search, notifications | Done | `/` KPIs and activity feed (`services/overview.ts`), global search, bell with overdue and waiting-on-client notices. Polling pauses in hidden tabs. |
+| Database | Done | Supabase Postgres in Mumbai (`ap-south-1`), one shared pooled client per instance (`src/server/db/client.ts`, do not create clients per call), RLS on every table. Migrations `0000` to `0024` in `drizzle/`. |
+| Migrations on deploy | Done | `npm run vercel-build` applies new migrations before every production build (see section 4, item 12). |
+| Notion import | Built, real run not recorded | `scripts/import-notion.ts`, `src/server/import/notion.ts`. Run `--dry-run` on the real CSV export and fix the alias lists before relying on it. |
+| Legacy leftovers | Still there | `clients`, `projects`, `tasks`, `pipeline_items` tables and the `crm`/`outreach` entries in `pipelineModels`. `/social` and `/app-dev` boards still use `pipeline_items`. `/outreach` keeps its older board with a "Move to Sales" button. |
+| Tests / CI | Done | Vitest, 43 files, 973 tests, all on in-memory Postgres (PGlite); route tests auto-discover every `route.ts` and check 401/403. `.github/workflows/ci.yml` runs lint, tsc, test, build, but the GitHub `check` job currently fails within seconds on every run (a setup problem, not the code), so run the four checks locally before pushing. |
 
 ### Sibling repo: `reshuffle-invoice`
-- Static HTML: `invoice-generator.html`, `work-order.html`, `offer-letter.html`, `salary-slip.html`, `letterhead.html`.
-- PDFs are made with `html2pdf.js` 0.10.2 in the browser.
-- No storage and no auto numbering.
-- The GST maths is CGST 9% + SGST 9% only. It is **wrong for out-of-state clients**, who need IGST 18%.
-- Signature and logo PNGs are committed to a **public** repo. Remove them and consider making the repo private.
-- Last commit `38aa4e1` (2026-08-12).
+- Static HTML: `invoice-generator.html`, `work-order.html`, `offer-letter.html`, `salary-slip.html`, `letterhead.html`. PDFs are made in the browser with `html2pdf.js`.
+- `dashboard-sync.js` saves each invoice and work order PDF in this dashboard (see the invoice software link above).
+- Its GST maths is CGST 9% + SGST 9% only, which is wrong for out-of-state clients (the dashboard handles IGST).
+- Signature and logo PNGs are committed to a public repo; remove them and consider making it private.
 
 ---
 
@@ -90,7 +93,8 @@ npm run dev               # http://localhost:3000
 11. **Numbering and concurrency:** `nextNumber` must run inside the issuing transaction (`db.transaction`). The tests run on PGlite, which serialises connections, so a real-Postgres concurrency run is still worth doing once before first invoice.
 12. **Migrations run on every production deploy.** Vercel builds with `npm run vercel-build`, which runs `scripts/migrate.ts --on-deploy` (production only, using `DIRECT_URL`) before `next build`. A PR that adds a file under `drizzle/` needs no manual step, but `DIRECT_URL` must stay set in the Vercel Production environment. A failed migration fails the build and the old deployment stays live. Branch previews never migrate.
 13. **Legacy leftovers:** the `clients` table and the `crm`/`outreach` entries in `pipelineModels` still exist. Delete them after the Notion import is verified and deals land (Phase 3).
-14. **Disk:** this repo lives in iCloud Drive. `node_modules` and `.next` sync slowly and can fill the disk. Prefer a non-iCloud folder for development.
+14. **Where the code lives:** `/Users/s/dev/Reshuffle_dashboard`. An older copy under iCloud Drive is stale (PR #48); do not edit it, and keep `node_modules` and `.next` out of iCloud.
+15. **Pushing to `main` deploys to production.** Srijan's rule (2026-11-18): interactive sessions commit straight to `main` with no new branches or PRs, so run lint, `tsc`, tests and build first.
 
 ---
 
@@ -148,7 +152,7 @@ These are summarised here; the full reasoning is in `plan.md` §4.
 
 These are also listed in `development-plan.md`. Defaults are used if there is no answer.
 
-1. **Invoice numbering:** what was the last invoice number issued from the static app, and what format should continue? Default: `RS/26-27/NNN`.
+1. **Invoice numbering:** the invoice software and the dashboard use `PREFIX/YEAR/MONTH/NN` (for example `RESHUFFLE/2026/05/01`); the next number comes from `GET /api/ingest/next-number`. Still open: whether the dashboard's own numbering should match that format.
 2. **CA review:** who is the CA, so they can review one sample invoice and the SAC codes before go-live?
 3. **Repo visibility:** make both repos private? (Recommended.)
 4. **Roles:** who needs access at launch, and in which role?
@@ -159,11 +163,10 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 ## 9. Start here (next session)
 
-1. Read `AGENTS.md`, then this file, then section 12 (work queue).
-2. If you are an automated run, follow section 12 exactly. If you are an interactive session, ask Srijan what to prioritise; the queue in section 12 is the default.
-3. Sign-in: Google with an allowlist. `BOOTSTRAP_ADMIN_EMAILS` holds the two admin emails; add team members as rows in `allowed_emails`.
-4. Run the Notion import with `--dry-run` against the real CSV export (human step: the export must stay outside the repo) and fix the column alias lists in `src/server/import/notion.ts`.
-5. Update this file at the end of every session.
+1. Read `AGENTS.md`, this file (sections 2 and 4 first), then `README.md`.
+2. Ask Srijan what to prioritise. The candidates are in section 11 and the open questions in section 8.
+3. Sign-in is Google with an allowlist. `BOOTSTRAP_ADMIN_EMAILS` holds the admin emails; add team members and outside people on `/access`.
+4. Work on `main` (see section 4, item 15). Check `git status` first: another process may be editing the same checkout.
 
 ---
 
@@ -214,11 +217,16 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 | 2026-11-18 | Claude with Srijan | Safer matching of uploaded PDFs to dashboard invoices (`services/ingest.ts`, no schema change): the invoice software starts every new invoice with the number `RESHUFFLE/2026/05/01`, which is a real dashboard invoice, so a test PDF with that number would have become its original PDF. A PDF is now attached only when the number matches and the total or the client name matches as well; it is always saved and listed either way. The invoice software PR (`reshuffle-invoice#1`) is merged and live, and the Desktop PDFs were checked: the seven numbered invoices were already in the dashboard byte for byte, and the August project total was saved as `RESHUFFLE/2026/05/01 (full project total)` because it shares the 05/01 number with the 1,18,000 advance invoice (CA to confirm). |
 | 2026-11-18 | Claude with Srijan | Invoice software PDFs are now also recorded as dashboard invoices (`feat/record-uploaded-invoices`, migration `0023`: `uploaded_documents.details` and `record_note`). The invoice software sends an `invoiceJson` field (client name, GSTIN, address, line items, advance, terms, notes) with each PDF. `services/ingest.ts` `recordFromUpload` creates and issues a dashboard invoice with the number from the PDF (`issueInvoice` `externalNumber`, so no new number is allocated) when the client already exists (matched by GSTIN, then name), the number is free, the date is present and the rebuilt total is within 1 rupee of the PDF total; the PDF is attached as Original PDF. Otherwise the PDF is still saved and the row on Finance > Invoice PDFs shows the reason (new client, number used, total mismatch, no date, bad items) and a Record as invoice button (`POST /api/uploaded-documents/[id]/record`, billing roles; a new client is only created after a confirm). Not recorded: payments, work orders, PDFs uploaded before this change (no details). Due date defaults to issue date plus 30 days; the dashboard works out IGST or CGST+SGST itself. **Needs `db:migrate` on production before merge**; merge the invoice software PR (`send-invoice-details`) after the dashboard is live. |
 | 2026-11-18 | Claude with Srijan | Branch `feat/lead-modules-client-edit` (PR #71, migration `0024`, new table `deal_modules`): sales board lead form takes a typed name (new company created as a prospect, or an existing one reused by name) plus sales node ("Found through"), referrer and the library modules the client needs; stage labels follow the sales process (keys unchanged); CRM client page gets Edit details and Delete, the client list gets Edit and Delete (delete archives, refused while the client has open deals). Production now migrates itself: `npm run vercel-build` runs `scripts/migrate.ts --on-deploy` (production only, `DIRECT_URL`) before the build. README rewritten; the rest of the docs still need a pass against the code. |
+| 2026-11-18 | Claude with Srijan | Sales workflow and docs. (1) Lead entry by typed name (PR #70). (2) Modules per lead, client edit and delete, auto-migrate on production deploy (PR #71, migration `0024`, table `deal_modules`; the first run is in the Vercel build log of that deploy). (3) Modules are SKUs (commit `81d9ff2`, straight to `main`): the lead value fills in from the sum of the chosen modules' library prices, changing modules re-prices a deal unless the value was set by hand, and the client page lists each deal's modules. (4) From now on changes go straight to `main`, no new branches. (5) Docs brought up to the code: README, this file, `plan.md`, `development-plan.md`, `docs/*`. |
 | 2026-11-12 | Claude (automated run) | A1: allowlist re-checked on session create and on every `getSessionUser` (logic in `src/server/session-user.ts`, role synced from allowlist, revoked/inactive = signed out), 6 PGlite tests. Also fixed Better Auth adapter `provider` from `"sqlite"` to `"pg"`. Needs a sign-in smoke test after deploy. |
 
-## 11. Backlog (ideas parked outside the current phases)
+## 11. Backlog (ideas parked)
 
-- Client portal (clients log in for projects, invoices and approvals)
+- Invitation emails for portal sign-ins (needs an email provider)
+- Pre-fill a scope from the modules chosen on the lead
+- Limit MEMBER (sales staff) to their own leads; today any staff sign-in sees every deal and client
+- Retire the legacy tables and boards (`clients`, `projects`, `tasks`, `pipeline_items`, `/social`, `/app-dev`)
+- Fix the GitHub `check` CI job (fails in seconds with no steps)
 - Tally / Zoho Books sync
 - AI helpers: draft a scope from diagnosis answers, summarise a call into an interaction, suggest modules by vertical
 - Event ticketing and payment links (Razorpay)
@@ -226,18 +234,16 @@ These are also listed in `development-plan.md`. Defaults are used if there is no
 
 ---
 
-## 12. Automated runs (hourly scheduler)
+## 12. Automated runs
 
-An hourly scheduled task continues development. **Each run does exactly one task from the queue below, then stops.** Interactive sessions can use the same queue.
+Hourly automated runs built the Postgres ports and most of Phases 2 to 7 in November 2026 (the `auto/*` branches in the log). The run rules below still apply to any automated run. For interactive sessions, Srijan's later instruction wins: commit straight to `main`, no new branches.
 
 ### Run protocol
 
-1. `git pull --ff-only` on `main`. Read `AGENTS.md`, this file, `plan.md` and the relevant section of `development-plan.md`.
-2. Pick the **first unchecked task** in the queue that is not marked `BLOCKED`. If every remaining task is blocked, append a line to the session log saying so and stop.
-3. Work on a branch named `auto/<task-slug>`. Keep the change small and in the existing style (services return `{ ok, data } | { ok: false, error, code }`, Zod per input, `logActivity` on mutations, integer paise, `.enableRLS()` on new tables, tests with PGlite).
-4. Before committing: `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build` must all pass. If a check fails and you cannot fix it in the same run, do not commit; write what failed in the session log and stop.
-5. Commit, push the branch and open a pull request into `main`. **Do not merge and do not push to `main`.** Every merge deploys to production. Srijan reviews and merges (he can change this rule by editing this line).
-6. Tick the task in the queue, add a one-row entry to the session log (date, "automated run", what changed, anything the next run must know), commit that to the same branch.
+1. `git pull --ff-only` on `main`. Read `AGENTS.md`, this file, `plan.md` and the relevant part of `development-plan.md`.
+2. Keep each change small and in the existing style (services return `{ ok, data } | { ok: false, error, code }`, Zod per input, `logActivity` on mutations, integer paise, `.enableRLS()` on new tables, tests with PGlite).
+3. Before pushing: `npm run lint`, `npx tsc --noEmit`, `npm test` and `npm run build` must pass. If one fails and cannot be fixed in the same run, do not push; write what failed in the session log.
+4. Add a one-row entry to the session log (date, who, what changed, anything the next run must know).
 
 ### Hard rules
 
@@ -248,52 +254,18 @@ An hourly scheduled task continues development. **Each run does exactly one task
 - Do not start a task that is marked `BLOCKED`. Do not guess answers to the open questions in section 8.
 - If something looks unsafe (money maths, auth, data loss), stop and write it in the session log instead of improvising.
 
-### Queue
+### Status of the original work queue
 
-**A. Review findings (do these first)**
+The queue written on 2026-11-12 is finished or superseded:
 
-- [ ] A1. Allowlist revocation: in `src/server/auth.ts` and `src/server/authz.ts`, re-check `resolveRoleForEmail` when a session is created and in `getSessionUser`; if the email is no longer allowed treat the user as inactive, otherwise sync the role. Add tests.
-- [x] A2. `src/proxy.ts`: match public prefixes on path boundaries (`p === path || path.startsWith(p + "/")`); reject `\` in the login `next` param; fail fast at startup if `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID` or `GOOGLE_CLIENT_SECRET` are missing in production.
-- [x] A1. Allowlist revocation: in `src/server/auth.ts` and `src/server/authz.ts`, re-check `resolveRoleForEmail` when a session is created and in `getSessionUser`; if the email is no longer allowed treat the user as inactive, otherwise sync the role. Add tests.
-- [ ] A2. `src/proxy.ts`: match public prefixes on path boundaries (`p === path || path.startsWith(p + "/")`); reject `\` in the login `next` param; fail fast at startup if `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID` or `GOOGLE_CLIENT_SECRET` are missing in production.
-- [ ] A3. Role-gate pages: `/settings` must check the session role on the server (not only the API).
-- [ ] A4. Route-level tests with a mocked session for every API group: 401 logged out, 403 wrong role (including FREELANCER), 400 invalid input, 404 unknown id, org isolation. **Partly done** in `src/server/__tests__/api-routes.test.ts`: 401/403 for every route (auto-discovered, so new routes are covered), plus 400/404/org isolation for companies and settings. Still to add: 400/404/org isolation for contacts, interactions, meetings, pipelines, social, freelancers, tasks, projects.
-- [x] A3. Role-gate pages: `/settings` must check the session role on the server (not only the API).
-- [ ] A4. Route-level tests with a mocked session for every API group: 401 logged out, 403 wrong role (including FREELANCER), 400 invalid input, 404 unknown id, org isolation.
-- [ ] A5. (Partial: `pipeline-board.tsx` and `freelancers/page.tsx` done on `auto/ui-robustness-boards`; `crm-workspace.tsx` and `company-detail.tsx` still to do, after #23 merges to avoid conflicts.) UI robustness: `crm-workspace.tsx` and `company-detail.tsx` ignore out-of-order responses (AbortController or request counter); polling must not overwrite an in-flight optimistic move or an unsaved edit (`freelancers/page.tsx`); `pipeline-board.tsx` resets state when `module` changes and must not clear the create form when the request failed.
-- [ ] A6. `numbering.ts`: accept a transaction only (type `Tx`); carry prefix and padding forward at financial-year rollover; validate `rateBps` is an even integer in `gst.ts` and bound per-line amounts; make `toPaise` accept strings only.
-- [x] A7. Small service fixes: reject archived contacts in `createInteraction`; wrap create-interaction (insert, touch company, log) in one transaction; guard `settings.ts` bank parsing; replace `.catch(() => undefined)` swallowing in the CRM UI with a visible message.
-- [x] A6. `numbering.ts`: accept a transaction only (type `Tx`); carry prefix and padding forward at financial-year rollover; validate `rateBps` is an even integer in `gst.ts` and bound per-line amounts; make `toPaise` accept strings only.
-- [ ] A7. Small service fixes: reject archived contacts in `createInteraction`; wrap create-interaction (insert, touch company, log) in one transaction; guard `settings.ts` bank parsing; replace `.catch(() => undefined)` swallowing in the CRM UI with a visible message.
-- [ ] A8. Add `.enableRLS()` check as a CI step (a test already asserts it; make sure new tables are covered) and add Supabase advisors notes to the PR description when a migration is included.
-
-**B. Phase 2: document engine, invoices, work orders** (`development-plan.md` Phase 2, one slice per run)
-
-- [x] B0. **Port the Phase 2a/2b backend to Postgres.** (Invoices + cron in PR #25 `auto/port-invoices-pg`; work orders in `auto/port-work-orders-pg`, stacked on it. Merge in that order.) It exists in history at commit `2104cdf` (`git show 2104cdf:src/server/services/invoices.ts` etc.): schema `billing.ts` and `work-orders.ts`, services `invoices.ts` and `work-orders.ts`, schemas `billing.ts` and `work-orders.ts`, routes `/api/invoices*`, `/api/work-orders*`, `/api/cron/daily`, tests, `requireBilling` (already in `authz.ts`). Rewrite with `pg-core`, `ts()` columns, jsonb, `.enableRLS()`, Dates, PGlite tests, `db:generate` for one migration, and restore the cron entry in `vercel.json`. **Needs migration on production before merge.** B2 and B3 below are covered by this task.
-- [x] B1. (ported to Postgres, PR stacked on B0 part 2) Register Noto Sans with `@react-pdf/renderer`, add the shared PDF parts in `src/server/documents/parts/` (letterhead, party block, items table, tax summary, amount in words, bank block, signature block, terms) with a render test that checks the ₹ glyph. No schema change.
-- [ ] B2. Schema for `documents`, `document_templates`, `invoices`, `invoice_items`, `payments`, `credit_notes` (with `org_id`, RLS) and the migration. **Needs migration on production before merge.**
-- [ ] B3. Invoice service: create draft, edit draft, issue (transaction: number via `nextNumber`, freeze `snapshot_json`, status, audit log, idempotency key), record payment, cancel via credit note, `markOverdue`. Tests for tax modes, numbering, immutability (409), partial then full payment.
-- [ ] B4. Invoice API routes (`/api/invoices*`) with role checks (ADMIN full, MANAGER create/issue, MEMBER read).
-- [ ] B5. PDF template `invoice/v1` and `/api/pdf/documents/[id]`; credit note template.
-- [x] B6. (ported, PR stacked on B1) Invoice UI: `/invoices` list with status filters and receivables total, `/invoices/new` and `/invoices/[id]` with live preview.
-- [ ] B7. Work orders: schema (migration), service, API, UI, template.
-- [x] B8. Letterhead letters: template and "New letter" page.
-- [ ] B9. `/api/cron/daily` (protected by `CRON_SECRET`) running `markOverdue`, plus `vercel.json` cron entry.
-- [ ] B10. BLOCKED until a human provides `BLOB_READ_WRITE_TOKEN`: logo and signature uploads in Settings.
-
-**C0. Phase 7 slices** (stacked on the Phase 6 branches)
-
-- [x] C7a. Docs: `docs` table (migration `0012`), service, `/api/docs*`, `/docs` workspace with search and a safe Markdown preview. Not done: seeding DL-001..005 (typed in by hand, never committed).
-- [x] C7b. Goals: `goals` table (migration `0013`), service, `/api/goals*`, `/goals` board by status with month picker and nav entry. Notion April Goals import not done.
-- [ ] C7c. Marketing: `social_accounts`, `content_items`, `/marketing` calendar and board.
-- [ ] C7d. Events: `events`, `event_team`, `event_registrations`, `/events` board and detail.
-- [ ] C7e. BLOCKED on Blob token: asset library.
-
-**C. Later phases:** continue in the order of `development-plan.md`: Phase 3 (deals, scopes, public accept page), Phase 4 (people documents), Phase 5 (projects and freelancers), Phase 6 (finance), Phase 7 (marketing, events, goals, docs), Phase 8 (overview, search, notifications). Break each into slices like section B and add them here before starting.
+- **A. Review findings:** A1 (allowlist revocation), A2 (public paths, login redirect, startup env check), A3 (page role gates), A6 (numbering and tax guards) and A7 (small service fixes) are done. A4 (route tests) is partly done: every route is auto-checked for 401/403 (staff routes and portal routes), 400/404/org isolation is tested for companies and settings, and portal ownership, the portal preview and the invoice-software upload have their own tests; the other API groups have service-level tests but no route-level 400/404/isolation tests. A5 (UI robustness) is done for the CRM pages and boards. A8 (RLS check): `db/__tests__/migrations.test.ts` asserts RLS is on for every public table, so a new table without `.enableRLS()` fails the tests.
+- **B. Documents, invoices, work orders:** done (schema, services, API, PDFs, UI, letters, daily cron).
+- **C. Phases 3 to 8:** done: deals and scopes with the public accept page, people and salary slips, projects and freelancers, finance, marketing, events, goals, docs, overview, search and notifications.
+- **Added since the plan:** portals and access, departments menu, questionnaires, project task board, payouts and finance plans, invoice software link, Mumbai database move and performance fixes, lead entry by typed name, modules as SKUs, client edit and delete, migrations on deploy.
 
 ### Blocked on a human (do not attempt)
 
-- Vercel Blob token, CA sign-off on the invoice PDF and tax rules, the last invoice number used, the real Notion export, GST/SAC confirmation, any change to Vercel or Google settings.
+- CA sign-off on the invoice PDF and tax rules, the real Notion export, GST/SAC confirmation, any change to Vercel or Google settings.
 | 2026-11-13 | automated run | Ported Phase 5a delivery projects backend to Postgres (`auto/projects-pg`, stacked on `auto/people-ui-pg`): `delivery_projects` and `project_milestones` (migration `0010`, RLS on, one project per deal), `services/delivery.ts`, routes `/api/delivery-projects*` and `/api/deals/[id]/convert`, 7 PGlite tests. Milestone invoice amount is treated as **pre-GST** (confirm with the CA). Next ports: `claude/phase-5b-projects-ui` (UI), then `claude/phase-6a-finance-ledger`. |
 | 2026-11-13 | automated run | Ported Phase 5b projects UI (`auto/projects-ui-pg`, stacked on `auto/projects-pg`): `/projects` delivery project list above the legacy board, `/projects/[id]` with milestones, mark done, draft invoice and billed/paid figures. No schema change. Next port: `claude/phase-6a-finance-ledger`. |
 | 2026-11-13 | automated run | Ported Phase 6a finance ledger backend to Postgres (`auto/finance-pg`, stacked on `auto/projects-ui-pg`): `expense_categories` and `ledger_entries` (migration `0011`, RLS on, unique per payment source), `services/finance.ts`, routes `/api/ledger*` and `/api/finance/*`, and `recordPayment` now books an INCOME entry in the same transaction. Not built: finance UI (6b), payouts, backfill route trigger. Remaining unported SQLite-era branches: none of 2c to 6a. Next: Phase 6b finance UI, then Phase 7 slices (add them to section 12 first), plus queue items A4/A5/A8 leftovers once the stack is merged. |
