@@ -91,6 +91,9 @@ describe("deals", () => {
     expect(company.source).toBe("Freelancer");
     expect(company.referrer).toBe("Asha");
     expect(company.ownerId).toBe(ctx.userId);
+    // The Client outreach page reads these from the list.
+    const listed = must(await listDeals(db, ctx)).find((d) => d.id === deal.id);
+    expect(listed).toMatchObject({ source: "Freelancer", referrer: "Asha", companyName: "Brand New Sweets", nextFollowUp: null });
   });
 
   it("reuses an existing company when the typed name matches, ignoring case", async () => {

@@ -32,7 +32,7 @@ Moves: from any open stage you may go to any other open stage, so the 2nd meetin
 
 ## 2. Generic boards (older)
 
-`PipelineBoard` (`src/components/pipeline-board.tsx`) is a generic kanban backed by the `pipeline_items` table and the stage lists in `src/server/models/pipeline.ts`. It still drives `/app-dev` and `/outreach`. The module names it defines are `crm`, `projects`, `social`, `outreach`, `app-dev`, `freelancers`, `finance`, `events`, `docs`; the real pages for the CRM, projects, finance, events and docs no longer use it. Its `crm` stages (`LEAD`, `CONTACTED`, `FINALISED`, `PROJECT_ONGOING`, `RETAINED`, `LOST`) are not the deal stages above.
+`PipelineBoard` (`src/components/pipeline-board.tsx`) is a generic kanban backed by the `pipeline_items` table and the stage lists in `src/server/models/pipeline.ts`. It still drives `/app-dev`. `/outreach` (Client outreach) no longer uses it: it reads the open deals from the Sales board and groups them by next follow-up date. The module names it defines are `crm`, `projects`, `social`, `outreach`, `app-dev`, `freelancers`, `finance`, `events`, `docs`; the real pages for the CRM, projects, finance, events and docs no longer use it. Its `crm` stages (`LEAD`, `CONTACTED`, `FINALISED`, `PROJECT_ONGOING`, `RETAINED`, `LOST`) are not the deal stages above.
 
 Endpoints (staff only):
 
@@ -41,4 +41,4 @@ Endpoints (staff only):
 - `PATCH`, `DELETE /api/pipelines/[module]/items/[entityId]`: update or delete a card.
 - `POST /api/pipelines/transition`: validate a move against the module's allowed transitions and write it to the activity log.
 
-`/outreach` has a "Move to Sales" button that turns a card into a client, contact and lead deal (`services/legacy.ts`, `/api/legacy/*`). `/projects` offers to move old task cards onto a project's task board. These boards are due for retirement.
+`/outreach` still lists any old outreach cards below the board with a "Move to Sales" button that turns a card into a client, contact and lead deal (`services/legacy.ts`, `/api/legacy/*`). `/projects` offers to move old task cards onto a project's task board. These boards are due for retirement.

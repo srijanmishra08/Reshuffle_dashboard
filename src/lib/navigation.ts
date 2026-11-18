@@ -54,7 +54,7 @@ export const departments: Department[] = [
     icon: Handshake,
     items: [
       { title: "Sales board", href: "/sales", description: "Deals from lead to won, with diagnosis and scopes.", icon: Handshake },
-      { title: "Outreach", href: "/outreach", description: "Outbound leads from first touch to closed (older board).", icon: Send },
+      { title: "Outreach", href: "/outreach", description: "Open leads sorted by follow-up date, from the Sales board.", icon: Send },
       { title: "Module library", href: "/settings/modules", description: "Reusable modules and prices used to build scopes.", icon: Boxes },
     ],
   },

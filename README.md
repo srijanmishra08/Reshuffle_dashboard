@@ -10,7 +10,7 @@ The side menu is split into departments (`src/lib/navigation.ts`):
 
 | Department | Pages |
 |---|---|
-| Sales | Sales board (`/sales`), deal page with diagnosis and scopes (`/sales/[id]`), Scope Maker, Outreach (older board), Module library (`/settings/modules`) |
+| Sales | Sales board (`/sales`), deal page with diagnosis and scopes (`/sales/[id]`), Scope Maker, Client outreach (every open lead sorted by follow-up date), Module library (`/settings/modules`) |
 | CRM | Clients (`/crm`, `/crm/[id]`; each client shows, edits and filters by the modules it is in), Client projects, Questionnaires |
 | Finance | Finance (ledger, receivables, monthly, GST, plan), Invoices (with the PDFs from the invoice software), Work orders |
 | Marketing | Marketing, Social media, Events |

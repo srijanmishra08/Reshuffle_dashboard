@@ -212,6 +212,7 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
       companyId: deals.companyId,
       companyName: companies.name,
       source: deals.source,
+      referrer: deals.referrer,
       temperature: deals.temperature,
       quotationStatus: deals.quotationStatus,
       nextFollowUp: deals.nextFollowUp,
