@@ -53,7 +53,7 @@ export function LifecycleBoard({ companies, onMove }: Props) {
                   <Link href={`/crm/${company.id}`} className="font-medium text-slate-900 hover:underline">
                     {company.name}
                   </Link>
-                  {company.verticalName ? <p className="text-xs text-slate-500">{company.verticalName}</p> : null}
+                  {company.modules.length > 0 ? <p className="mt-1 text-xs text-slate-500">{company.modules.map((m) => m.name).join(", ")}</p> : null}
                 </div>
               ))}
             </div>

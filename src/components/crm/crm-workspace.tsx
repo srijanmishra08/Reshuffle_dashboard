@@ -10,7 +10,6 @@ import {
   type Company,
   type FollowUp,
   type Lifecycle,
-  type Vertical,
 } from "@/lib/crm-types";
 import { FollowUpsPanel } from "@/components/crm/followups-panel";
 import { LifecycleBoard } from "@/components/crm/lifecycle-board";
@@ -19,15 +18,14 @@ const inputClass = "rounded-xl border border-slate-200 bg-white px-3 py-2 text-s
 
 export function CrmWorkspace() {
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [verticals, setVerticals] = useState<Vertical[]>([]);
+  const [moduleOptions, setModuleOptions] = useState<{ id: string; name: string }[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [view, setView] = useState<"table" | "board">("table");
   const [q, setQ] = useState("");
   const [lifecycle, setLifecycle] = useState("");
-  const [verticalId, setVerticalId] = useState("");
+  const [moduleId, setModuleId] = useState("");
   const [message, setMessage] = useState("");
   const [newName, setNewName] = useState("");
-  const [newVertical, setNewVertical] = useState("");
   const [newSource, setNewSource] = useState("");
 
   // Only the newest load may write state; older (out-of-order) responses are dropped.
@@ -38,7 +36,7 @@ export function CrmWorkspace() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (lifecycle) params.set("lifecycle", lifecycle);
-    if (verticalId) params.set("verticalId", verticalId);
+    if (moduleId) params.set("moduleId", moduleId);
 
     const [companyRows, followUpRows] = await Promise.all([
       api<Company[]>(`/api/companies?${params.toString()}`),
@@ -47,10 +45,10 @@ export function CrmWorkspace() {
     if (seq !== loadSeq.current) return;
     setCompanies(companyRows);
     setFollowUps(followUpRows);
-  }, [q, lifecycle, verticalId]);
+  }, [q, lifecycle, moduleId]);
 
   useEffect(() => {
-    void api<Vertical[]>("/api/verticals").then(setVerticals).catch(() => setMessage("Could not load verticals"));
+    void api<{ id: string; name: string }[]>("/api/modules?active=true").then(setModuleOptions).catch(() => setMessage("Could not load modules"));
   }, []);
 
   useEffect(() => {
@@ -74,7 +72,7 @@ export function CrmWorkspace() {
     try {
       await api<Company>("/api/companies", {
         method: "POST",
-        ...jsonBody({ name: newName, verticalId: newVertical || undefined, source: newSource || undefined }),
+        ...jsonBody({ name: newName, source: newSource || undefined }),
       });
       setNewName("");
       setNewSource("");
@@ -118,15 +116,6 @@ export function CrmWorkspace() {
             <input required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Company name" className={`${inputClass} mt-1 w-full`} />
           </label>
           <label className="text-xs font-medium text-slate-600">
-            Vertical
-            <select value={newVertical} onChange={(e) => setNewVertical(e.target.value)} className={`${inputClass} mt-1 block`}>
-              <option value="">None</option>
-              {verticals.map((v) => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-slate-600">
             Source
             <input value={newSource} onChange={(e) => setNewSource(e.target.value)} placeholder="Referral, event..." className={`${inputClass} mt-1 block`} />
           </label>
@@ -145,10 +134,10 @@ export function CrmWorkspace() {
             <option key={stage} value={stage}>{stage}</option>
           ))}
         </select>
-        <select value={verticalId} onChange={(e) => setVerticalId(e.target.value)} className={inputClass}>
-          <option value="">All verticals</option>
-          {verticals.map((v) => (
-            <option key={v.id} value={v.id}>{v.name}</option>
+        <select value={moduleId} onChange={(e) => setModuleId(e.target.value)} className={inputClass}>
+          <option value="">All modules</option>
+          {moduleOptions.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
           ))}
         </select>
         <div className="ml-auto inline-flex overflow-hidden rounded-xl border border-slate-200 text-sm">
@@ -176,7 +165,7 @@ export function CrmWorkspace() {
               <tr>
                 <th className="px-4 py-3">Company</th>
                 <th className="px-4 py-3">Lifecycle</th>
-                <th className="px-4 py-3">Vertical</th>
+                <th className="px-4 py-3">Modules</th>
                 <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Next action</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -194,7 +183,7 @@ export function CrmWorkspace() {
                     <Link href={`/crm/${company.id}`} className="font-medium text-slate-900 hover:underline">{company.name}</Link>
                   </td>
                   <td className="px-4 py-3">{company.lifecycle}</td>
-                  <td className="px-4 py-3">{company.verticalName ?? ""}</td>
+                  <td className="px-4 py-3">{company.modules.map((m) => m.name).join(", ")}</td>
                   <td className="px-4 py-3">{company.source ?? ""}</td>
                   <td className={`px-4 py-3 ${isOverdue(company.nextActionAt) ? "font-medium text-red-700" : ""}`}>
                     {formatDate(company.nextActionAt)}

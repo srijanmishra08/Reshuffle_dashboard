@@ -104,6 +104,29 @@ describe("companies", () => {
     expect((await updateCompany(db, ctx, company.id, { name: "  " })).ok).toBe(false);
   });
 
+  it("shows the modules (SKUs) a client is in, once each, and filters the list by module", async () => {
+    await db.insert(schema.modulesLibrary).values([
+      { id: "crm-mod-a", orgId: "default", name: "Billing" },
+      { id: "crm-mod-b", orgId: "default", name: "Inventory" },
+    ]);
+    const withBoth = must(await createCompany(db, ctx, { name: "Sku Client One" }));
+    const withB = must(await createCompany(db, ctx, { name: "Sku Client Two" }));
+    must(await createDeal(db, ctx, { companyId: withBoth.id, title: "First", moduleIds: ["crm-mod-a", "crm-mod-b"] }));
+    must(await createDeal(db, ctx, { companyId: withBoth.id, title: "Second", moduleIds: ["crm-mod-a"] }));
+    const lost = must(await createDeal(db, ctx, { companyId: withB.id, title: "Dropped", moduleIds: ["crm-mod-a"] }));
+    must(await transitionDeal(db, ctx, lost.id, { to: "LOST", lostReason: "no budget" }));
+    must(await createDeal(db, ctx, { companyId: withB.id, title: "Live", moduleIds: ["crm-mod-b"] }));
+
+    expect(must(await getCompany(db, ctx, withBoth.id)).modules.map((m) => m.name)).toEqual(["Billing", "Inventory"]);
+    expect(must(await getCompany(db, ctx, withB.id)).modules.map((m) => m.name)).toEqual(["Inventory"]);
+
+    const billing = must(await listCompanies(db, ctx, { moduleId: "crm-mod-a" })).map((c) => c.name);
+    expect(billing).toEqual(["Sku Client One"]);
+    const inventory = must(await listCompanies(db, ctx, { moduleId: "crm-mod-b" })).map((c) => c.name).sort();
+    expect(inventory).toEqual(["Sku Client One", "Sku Client Two"]);
+    expect(must(await listCompanies(db, ctx, {})).find((c) => c.name === "Sku Client Two")?.modules).toHaveLength(1);
+  });
+
   it("will not archive a company that still has an open deal", async () => {
     const company = must(await createCompany(db, ctx, { name: "Busy Client" }));
     const deal = must(await createDeal(db, ctx, { companyId: company.id, title: "Open one" }));

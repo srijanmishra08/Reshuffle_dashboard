@@ -21,6 +21,7 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 
 ## How the main records link
 
+- A client's modules (SKUs) are not stored on the company: they are the modules on its deals that are not lost, shown on the CRM list, board and client page and usable as a list filter. Verticals are no longer shown in the CRM screens (the `verticals` table remains for the marketing pages and the Notion import).
 - A **company** (client) has contacts, interactions, meetings, deals, delivery projects, invoices, work orders and questionnaires.
 - A **deal** belongs to one company. It has stage history, diagnosis answers, the modules it needs (`deal_modules`), and scope versions. A deal's `value_paise` starts as the sum of its modules' `default_price_paise` and can be overridden.
 - An accepted scope plus a deal at Accepted (`WON`) converts to one **delivery project** with milestones taken from the payment schedule. Invoices and work orders link back to the project and scope.

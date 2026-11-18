@@ -13,6 +13,8 @@ export type Company = {
   address: string | null;
   verticalId: string | null;
   verticalName: string | null;
+  /** Modules (SKUs) on the client's deals that are not lost. */
+  modules: { id: string; name: string }[];
   website: string | null;
   lifecycle: Lifecycle;
   ownerId: string | null;

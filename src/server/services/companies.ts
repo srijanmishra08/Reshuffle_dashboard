@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -12,7 +12,7 @@ import { logActivity } from "@/server/services/activity";
 
 export type ServiceContext = { orgId: string; userId: string };
 
-const { companies, verticals, interactions, deals } = schema;
+const { companies, verticals, interactions, deals, dealModules, modulesLibrary } = schema;
 
 /** Earliest pending next-action date for a company. */
 const nextActionAt = sql<string | null>`(
@@ -42,6 +42,30 @@ const companyColumns = {
   nextActionAt,
 };
 
+export type CompanyModule = { id: string; name: string };
+
+/**
+ * The modules (SKUs) each client is in: every module on any of its deals that is not lost.
+ * A client with two deals that both include Billing shows Billing once.
+ */
+async function modulesByCompany(db: Db, orgId: string, companyIds: string[]): Promise<Map<string, CompanyModule[]>> {
+  const byCompany = new Map<string, CompanyModule[]>();
+  if (companyIds.length === 0) return byCompany;
+  const rows = await db
+    .selectDistinct({ companyId: deals.companyId, id: modulesLibrary.id, name: modulesLibrary.name })
+    .from(dealModules)
+    .innerJoin(deals, eq(deals.id, dealModules.dealId))
+    .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
+    .where(and(eq(deals.orgId, orgId), inArray(deals.companyId, companyIds), ne(deals.stage, "LOST")))
+    .orderBy(asc(modulesLibrary.name));
+  for (const r of rows) {
+    const list = byCompany.get(r.companyId) ?? [];
+    list.push({ id: r.id, name: r.name });
+    byCompany.set(r.companyId, list);
+  }
+  return byCompany;
+}
+
 export async function listCompanies(db: Db, ctx: ServiceContext, rawQuery: unknown = {}) {
   const parsed = companyListQuerySchema.safeParse(rawQuery);
   if (!parsed.success) {
@@ -54,6 +78,12 @@ export async function listCompanies(db: Db, ctx: ServiceContext, rawQuery: unkno
   if (query.lifecycle) conditions.push(eq(companies.lifecycle, query.lifecycle));
   if (query.verticalId) conditions.push(eq(companies.verticalId, query.verticalId));
   if (query.ownerId) conditions.push(eq(companies.ownerId, query.ownerId));
+  if (query.moduleId) {
+    conditions.push(sql`exists (
+      select 1 from ${dealModules} dm join ${deals} d on d.id = dm.deal_id
+      where d.company_id = ${companies.id} and dm.module_id = ${query.moduleId} and d.stage <> 'LOST'
+    )`);
+  }
 
   if (query.q) {
     const pattern = `%${query.q.replace(/[%_]/g, "")}%`;
@@ -75,7 +105,8 @@ export async function listCompanies(db: Db, ctx: ServiceContext, rawQuery: unkno
     .limit(query.limit)
     .offset(query.offset);
 
-  return ok(rows);
+  const modules = await modulesByCompany(db, ctx.orgId, rows.map((r) => r.id));
+  return ok(rows.map((r) => ({ ...r, modules: modules.get(r.id) ?? [] })));
 }
 
 export async function getCompany(db: Db, ctx: ServiceContext, id: string) {
@@ -86,7 +117,9 @@ export async function getCompany(db: Db, ctx: ServiceContext, id: string) {
     .where(and(eq(companies.id, id), eq(companies.orgId, ctx.orgId), isNull(companies.archivedAt)))
     .limit(1);
 
-  return rows[0] ? ok(rows[0]) : fail("NOT_FOUND", "Company not found");
+  if (!rows[0]) return fail("NOT_FOUND", "Company not found");
+  const modules = await modulesByCompany(db, ctx.orgId, [id]);
+  return ok({ ...rows[0], modules: modules.get(id) ?? [] });
 }
 
 async function verticalExists(db: Db, ctx: ServiceContext, verticalId: string) {

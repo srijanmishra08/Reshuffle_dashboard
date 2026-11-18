@@ -16,7 +16,6 @@ import {
   type Interaction,
   type Lifecycle,
   type Meeting,
-  type Vertical,
 } from "@/lib/crm-types";
 
 const inputClass = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm";
@@ -37,7 +36,6 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [message, setMessage] = useState("Loading...");
   const [loaded, setLoaded] = useState(false);
 
@@ -64,7 +62,6 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   }, [base]);
 
   useEffect(() => {
-    void api<Vertical[]>("/api/verticals").then(setVerticals).catch(() => setMessage("Could not load verticals"));
     const timer = window.setTimeout(() => {
       void load().catch((error: Error) => setMessage(error.message));
     }, 0);
@@ -100,7 +97,6 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
       <Header
         company={company}
-        verticals={verticals}
         onPatch={(patch) => run(() => api(base, { method: "PATCH", ...jsonBody(patch) }))}
         onArchive={async () => {
           if (!window.confirm(`Delete ${company.name}? It will be removed from the client list. Its deals, invoices and history are kept.`)) return;
@@ -204,12 +200,10 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
 function Header({
   company,
-  verticals,
   onPatch,
   onArchive,
 }: {
   company: Company;
-  verticals: Vertical[];
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onArchive: () => Promise<void>;
 }) {
@@ -242,15 +236,18 @@ function Header({
             ))}
           </select>
         </label>
-        <label className="text-xs font-medium text-slate-600">
-          Vertical
-          <select value={company.verticalId ?? ""} onChange={(e) => void onPatch({ verticalId: e.target.value || null })} className={`${inputClass} mt-1`}>
-            <option value="">None</option>
-            {verticals.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="text-xs font-medium text-slate-600">
+          Modules (SKUs)
+          <div className="mt-1 flex min-h-[2.25rem] flex-wrap items-center gap-1.5 text-sm font-normal">
+            {company.modules.length === 0 ? (
+              <span className="text-slate-400">None yet. Pick them on the deal in Sales.</span>
+            ) : (
+              company.modules.map((m) => (
+                <span key={m.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">{m.name}</span>
+              ))
+            )}
+          </div>
+        </div>
         <label className="text-xs font-medium text-slate-600">
           GSTIN
           <input value={gstin} onChange={(e) => setGstin(e.target.value)} onBlur={() => gstin !== (company.gstin ?? "") && void onPatch({ gstin })} className={`${inputClass} mt-1`} />

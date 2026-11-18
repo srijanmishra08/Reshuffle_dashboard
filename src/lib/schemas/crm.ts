@@ -96,6 +96,8 @@ export const companyListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   lifecycle: z.enum(companyLifecycleValues).optional(),
   verticalId: z.string().trim().max(100).optional(),
+  /** Only clients with an open deal that includes this module (SKU). */
+  moduleId: z.string().trim().max(100).optional(),
   ownerId: z.string().trim().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(200),
   offset: z.coerce.number().int().min(0).default(0),
