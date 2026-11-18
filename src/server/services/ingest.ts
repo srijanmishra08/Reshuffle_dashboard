@@ -254,23 +254,20 @@ const nextNumberQuerySchema = z.object({
 
 /**
  * The next invoice number in the pattern PREFIX/YEAR/MONTH/NN (for example RESHUFFLE/2026/05/01): one more than the highest
- * number already used for that month, counting both dashboard invoices and PDFs saved from the invoice software, so a PDF
- * that was made but not recorded yet is not given out twice.
+ * number used by an invoice in the dashboard for that month. Only invoices the dashboard accepted count, so a PDF that was
+ * refused (or whose invoice was deleted) gives its number back; saved PDFs alone never use a number up.
  */
 export async function nextInvoiceNumber(db: Db, orgId: string, rawQuery: unknown) {
   const parsed = nextNumberQuerySchema.safeParse(rawQuery);
   if (!parsed.success) return fail("VALIDATION", "Give a prefix, a year and a month");
   const { prefix, year, month } = parsed.data;
   const base = `${prefix}/${year}/${String(month).padStart(2, "0")}/`;
-  // "_" and "%" are LIKE wildcards; the prefix only allows letters, digits, "_" and "-", so escape "_" to match literally.
+  // "_" is a LIKE wildcard and the prefix may contain it, so escape it to match literally.
   const like = `${base.replace(/_/g, "\\_")}%`;
-  const [fromInvoices, fromUploads] = await Promise.all([
-    db.select({ n: invoices.number }).from(invoices).where(and(eq(invoices.orgId, orgId), ilike(invoices.number, like))),
-    db.select({ n: uploadedDocuments.number }).from(uploadedDocuments).where(and(eq(uploadedDocuments.orgId, orgId), eq(uploadedDocuments.docType, "INVOICE"), ilike(uploadedDocuments.number, like))),
-  ]);
+  const rows = await db.select({ n: invoices.number }).from(invoices).where(and(eq(invoices.orgId, orgId), ilike(invoices.number, like)));
   let highest = 0;
   const tail = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d{1,6})$`, "i");
-  for (const row of [...fromInvoices, ...fromUploads]) {
+  for (const row of rows) {
     const m = tail.exec((row.n ?? "").trim());
     if (m) highest = Math.max(highest, Number(m[1]));
   }
