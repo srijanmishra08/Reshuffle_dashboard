@@ -9,6 +9,7 @@ import {
   canTransitionDeal,
   dealStageLabels,
   dealStageValues,
+  leadSourceValues,
   quotationStatusValues,
   temperatureValues,
   type DealStage,
@@ -309,7 +310,8 @@ export function DealDetail({ id }: { id: string }) {
               </label>
               <label className={label}>
                 Lead source
-                <input value={form.source ?? ""} onChange={set("source")} className={input} />
+                <input list="lead-sources" value={form.source ?? ""} onChange={set("source")} className={input} />
+                <datalist id="lead-sources">{leadSourceValues.map((v) => <option key={v} value={v} />)}</datalist>
               </label>
               <label className={label}>
                 Referred by

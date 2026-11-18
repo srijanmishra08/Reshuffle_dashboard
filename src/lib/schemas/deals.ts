@@ -16,8 +16,11 @@ const optionalText = (max: number) =>
     .nullable()
     .optional();
 
-export const dealInputSchema = z.object({
-  companyId: z.string().trim().min(1, "Company is required").max(100),
+const dealFields = z.object({
+  /** An existing company. Omit it and send `companyName` to add a brand-new lead. */
+  companyId: z.string().trim().min(1).max(100).optional(),
+  /** A new lead's name; reuses the company when one with this name already exists. */
+  companyName: z.string().trim().min(1, "Lead name is required").max(200).optional(),
   title: z.string().trim().min(1, "Title is required").max(200),
   valuePaise: z.number().int().min(0).max(100_000_000_000_00).default(0),
   verticalId: optionalText(100),
@@ -31,9 +34,14 @@ export const dealInputSchema = z.object({
   nextFollowUp: dateOnly.nullable().optional(),
   ownerId: optionalText(100),
 });
+
+export const dealInputSchema = dealFields.refine((v) => Boolean(v.companyId || v.companyName), {
+  message: "Enter the lead's name or pick an existing company",
+  path: ["companyName"],
+});
 export type DealInput = z.infer<typeof dealInputSchema>;
 
-export const dealPatchSchema = dealInputSchema.omit({ companyId: true }).partial();
+export const dealPatchSchema = dealFields.omit({ companyId: true, companyName: true }).partial();
 
 export const dealListQuerySchema = z.object({
   stage: z.enum(dealStageValues).optional(),

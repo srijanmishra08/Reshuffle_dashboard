@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -40,19 +40,46 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
   if (!parsed.success) return fail("VALIDATION", "Invalid deal", parsed.error.flatten());
   const input = parsed.data;
 
-  const company = await db
-    .select({ id: companies.id })
-    .from(companies)
-    .where(and(eq(companies.id, input.companyId), eq(companies.orgId, ctx.orgId)))
-    .limit(1);
-  if (company.length === 0) return fail("NOT_FOUND", "Company not found");
-
   const id = newId();
+  let companyId = input.companyId ?? "";
+  let newCompanyId: string | null = null;
+
+  if (input.companyId) {
+    const company = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.id, input.companyId), eq(companies.orgId, ctx.orgId)))
+      .limit(1);
+    if (company.length === 0) return fail("NOT_FOUND", "Company not found");
+  } else {
+    // New lead: reuse a company with the same name (ignoring case), otherwise create it as a PROSPECT.
+    const name = input.companyName!;
+    const match = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.orgId, ctx.orgId), isNull(companies.archivedAt), sql`lower(${companies.name}) = lower(${name})`))
+      .limit(1);
+    if (match[0]) companyId = match[0].id;
+    else newCompanyId = companyId = newId();
+  }
+
   await db.transaction(async (tx: Tx) => {
+    if (newCompanyId) {
+      await tx.insert(companies).values({
+        id: newCompanyId,
+        orgId: ctx.orgId,
+        name: input.companyName!,
+        lifecycle: "PROSPECT",
+        ownerId: input.ownerId ?? ctx.userId,
+        source: input.source ?? null,
+        referrer: input.referrer ?? null,
+        createdBy: ctx.userId,
+      });
+    }
     await tx.insert(deals).values({
       id,
       orgId: ctx.orgId,
-      companyId: input.companyId,
+      companyId,
       title: input.title,
       valuePaise: input.valuePaise,
       verticalId: input.verticalId ?? null,
@@ -74,6 +101,12 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
       changedBy: ctx.userId,
     });
   });
+  if (newCompanyId) {
+    await logActivity(
+      { actorId: ctx.userId, action: "company.created", module: "crm", entityType: "company", entityId: newCompanyId, metadata: { name: input.companyName, via: "sales" } },
+      db
+    );
+  }
   await audit(db, ctx, "created", id);
   return getDeal(db, ctx, id);
 }

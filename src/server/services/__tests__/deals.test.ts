@@ -35,6 +35,31 @@ describe("deal stage rules", () => {
 });
 
 describe("deals", () => {
+  it("creates a brand-new company from a typed lead name, as a PROSPECT with its sales node", async () => {
+    const deal = must(
+      await createDeal(db, ctx, { companyName: "  Brand New Sweets ", title: "Brand New Sweets", source: "Freelancer", referrer: "Asha" })
+    );
+    expect(deal.stage).toBe("LEAD");
+    expect(deal.company?.name).toBe("Brand New Sweets");
+    expect(deal.company?.lifecycle).toBe("PROSPECT");
+    const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, deal.companyId));
+    expect(company.source).toBe("Freelancer");
+    expect(company.referrer).toBe("Asha");
+    expect(company.ownerId).toBe(ctx.userId);
+  });
+
+  it("reuses an existing company when the typed name matches, ignoring case", async () => {
+    const before = await db.select().from(schema.companies);
+    const deal = must(await createDeal(db, ctx, { companyName: "fake dairy co", title: "Second project" }));
+    expect(deal.companyId).toBe(companyId);
+    expect((await db.select().from(schema.companies)).length).toBe(before.length);
+  });
+
+  it("needs either a company id or a lead name", async () => {
+    expect((await createDeal(db, ctx, { title: "Orphan" })).ok).toBe(false);
+    expect((await createDeal(db, ctx, { companyName: "   ", title: "Blank" })).ok).toBe(false);
+  });
+
   it("rejects a deal for an unknown company", async () => {
     const res = await createDeal(db, ctx, { companyId: "nope", title: "X" });
     expect(res.ok).toBe(false);
