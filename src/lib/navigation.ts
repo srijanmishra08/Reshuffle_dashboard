@@ -13,6 +13,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Mail,
+  Network,
   Megaphone,
   Receipt,
   Send,
@@ -55,6 +56,7 @@ export const departments: Department[] = [
     items: [
       { title: "Sales board", href: "/sales", description: "Deals from lead to won, with diagnosis and scopes.", icon: Handshake },
       { title: "Outreach", href: "/outreach", description: "Open leads sorted by follow-up date, from the Sales board.", icon: Send },
+      { title: "Sales nodes", href: "/sales/nodes", description: "Who brings leads, how many each brought, and referral commission.", icon: Network },
       { title: "Module library", href: "/settings/modules", description: "Reusable modules and prices used to build scopes.", icon: Boxes },
     ],
   },

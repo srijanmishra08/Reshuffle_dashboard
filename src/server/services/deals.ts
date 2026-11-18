@@ -13,6 +13,7 @@ import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { addCompanyModules, resolveModules } from "@/server/services/module-links";
 import { isStaffMember } from "@/server/services/staff";
+import { salesNodeLabels } from "@/server/services/sales-nodes";
 import { canTransitionDeal, dealStageValues, type DealStage } from "@/server/models/deals";
 import type { ServiceContext } from "@/server/services/companies";
 
@@ -43,6 +44,8 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
   const input = parsed.data;
 
   if (input.ownerId && !(await isStaffMember(db, ctx.orgId, input.ownerId))) return fail("VALIDATION", "Unknown owner");
+  const node = input.salesNodeId ? await salesNodeLabels(db, ctx.orgId, input.salesNodeId) : null;
+  if (input.salesNodeId && !node) return fail("VALIDATION", "Unknown sales node");
   const resolved = await resolveModules(db, ctx.orgId, input.moduleIds);
   if (!resolved) return fail("VALIDATION", "Unknown module");
   const moduleIds = resolved.ids;
@@ -81,8 +84,8 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
         name: input.companyName!,
         lifecycle: "PROSPECT",
         ownerId: input.ownerId ?? ctx.userId,
-        source: input.source ?? null,
-        referrer: input.referrer ?? null,
+        source: input.source ?? node?.source ?? null,
+        referrer: input.referrer ?? node?.referrer ?? null,
         createdBy: ctx.userId,
       });
     }
@@ -93,8 +96,9 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
       title: input.title,
       valuePaise,
       engagementModel: input.engagementModel ?? null,
-      source: input.source ?? null,
-      referrer: input.referrer ?? null,
+      source: input.source ?? node?.source ?? null,
+      referrer: input.referrer ?? node?.referrer ?? null,
+      salesNodeId: input.salesNodeId ?? null,
       quotationStatus: input.quotationStatus,
       currentBlock: input.currentBlock ?? null,
       temperature: input.temperature ?? null,
@@ -133,7 +137,14 @@ export async function updateDeal(db: Db, ctx: ServiceContext, id: string, raw: u
   if (!existing) return fail("NOT_FOUND", "Deal not found");
 
   if (patch.ownerId && !(await isStaffMember(db, ctx.orgId, patch.ownerId))) return fail("VALIDATION", "Unknown owner");
+  const node = patch.salesNodeId ? await salesNodeLabels(db, ctx.orgId, patch.salesNodeId) : null;
+  if (patch.salesNodeId && !node) return fail("VALIDATION", "Unknown sales node");
   const { moduleIds: requestedModules, ...dealPatch } = patch;
+  // Picking a sales node also sets the lead's source and referrer text, unless they are sent too.
+  if (node) {
+    if (dealPatch.source === undefined) dealPatch.source = node.source;
+    if (dealPatch.referrer === undefined) dealPatch.referrer = node.referrer;
+  }
   const resolvedModules = requestedModules === undefined ? undefined : await resolveModules(db, ctx.orgId, requestedModules);
   if (resolvedModules === null) return fail("VALIDATION", "Unknown module");
   const moduleIds = resolvedModules?.ids;
@@ -218,6 +229,7 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
       companyName: companies.name,
       source: deals.source,
       referrer: deals.referrer,
+      salesNodeId: deals.salesNodeId,
       temperature: deals.temperature,
       quotationStatus: deals.quotationStatus,
       nextFollowUp: deals.nextFollowUp,

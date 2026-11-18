@@ -28,6 +28,16 @@ export const dealStageLabels: Record<DealStage, string> = {
   LOST: "Lost",
 };
 
+/** Who can bring us a lead: a sales node is one of these. */
+export const salesNodeKindValues = ["SALES_STAFF", "FREELANCER", "AGENCY", "INDIVIDUAL"] as const;
+export type SalesNodeKind = (typeof salesNodeKindValues)[number];
+export const salesNodeKindLabels: Record<SalesNodeKind, string> = {
+  SALES_STAFF: "Sales staff",
+  FREELANCER: "Freelancer",
+  AGENCY: "Agency",
+  INDIVIDUAL: "Individual referral",
+};
+
 /** The kinds of sales node that can bring us a lead. */
 export const leadSourceValues = ["Sales staff", "Freelancer", "Agency", "Individual referral", "Direct / other"] as const;
 

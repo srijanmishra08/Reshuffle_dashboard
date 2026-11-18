@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { useStaff } from "@/lib/use-staff";
+import { useSalesNodes } from "@/lib/use-sales-nodes";
 import { DealActivity } from "@/components/sales/deal-activity";
 import {
   canTransitionDeal,
@@ -37,6 +38,7 @@ type Deal = {
   modules: { id: string; name: string }[];
   ownerId: string | null;
   ownerName: string | null;
+  salesNodeId: string | null;
   company: { id: string; name: string; lifecycle: string } | null;
   history: { id?: string; fromStage: string | null; toStage: string; at: string }[];
   diagnosis: { bucket: string; totalPain: number; answered: number }[];
@@ -69,6 +71,7 @@ export function DealDetail({ id }: { id: string }) {
   const [tab, setTab] = useState<"details" | "activity" | "diagnosis" | "scopes">("details");
   const [form, setForm] = useState<Record<string, string>>({});
   const { staff } = useStaff();
+  const { nodes } = useSalesNodes();
   const [allModules, setAllModules] = useState<ModuleOption[]>([]);
   const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Record<string, { answer: string; painScore: number }>>({});
@@ -87,6 +90,7 @@ export function DealDetail({ id }: { id: string }) {
       expectedClose: d.expectedClose ?? "",
       nextFollowUp: d.nextFollowUp ?? "",
       ownerId: d.ownerId ?? "",
+      salesNodeId: d.salesNodeId ?? "",
     });
     setModuleIds(d.modules.map((m) => m.id));
     const next: Record<string, { answer: string; painScore: number }> = {};
@@ -160,6 +164,7 @@ export function DealDetail({ id }: { id: string }) {
               expectedClose: form.expectedClose || null,
               nextFollowUp: form.nextFollowUp || null,
               ownerId: form.ownerId || undefined,
+              salesNodeId: form.salesNodeId || null,
               moduleIds,
             }),
           })
@@ -335,6 +340,23 @@ export function DealDetail({ id }: { id: string }) {
                       {t}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label className={label}>
+                Sales node (who brought this lead)
+                <select
+                  value={form.salesNodeId ?? ""}
+                  onChange={(e) => {
+                    const node = nodes.find((n) => n.id === e.target.value);
+                    setForm({ ...form, salesNodeId: e.target.value, ...(node ? { source: node.kindLabel, referrer: node.name } : {}) });
+                  }}
+                  className={input}
+                >
+                  <option value="">None / direct</option>
+                  {nodes.map((n) => (
+                    <option key={n.id} value={n.id}>{n.name} ({n.kindLabel})</option>
+                  ))}
+                  {form.salesNodeId && !nodes.some((n) => n.id === form.salesNodeId) ? <option value={form.salesNodeId}>{form.referrer || "Switched-off node"}</option> : null}
                 </select>
               </label>
               <label className={label}>

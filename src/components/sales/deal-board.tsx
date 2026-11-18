@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { useStaff } from "@/lib/use-staff";
-import { canTransitionDeal, dealStageLabels, dealStageValues, leadSourceValues, type DealStage } from "@/server/models/deals";
+import { canTransitionDeal, dealStageLabels, dealStageValues, salesNodeKindLabels, salesNodeKindValues, type DealStage } from "@/server/models/deals";
+import { useSalesNodes } from "@/lib/use-sales-nodes";
 
 type DealRow = {
   id: string;
@@ -26,10 +27,11 @@ export function DealBoard() {
   const [deals, setDeals] = useState<DealRow[]>([]);
   const [summary, setSummary] = useState<StageSummary[]>([]);
   const [error, setError] = useState("");
-  const emptyForm = { name: "", source: "", referrer: "", title: "", rupees: "" };
+  const emptyForm = { name: "", node: "", newNodeName: "", newNodeKind: "INDIVIDUAL", title: "", rupees: "" };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const { staff, currentUserId } = useStaff();
+  const { nodes, reload: reloadNodes } = useSalesNodes();
   const [ownerPick, setOwnerPick] = useState("");
   const [view, setView] = useState<"all" | "mine" | string>("all");
   const ownerShown = ownerPick || currentUserId;
@@ -80,13 +82,21 @@ export function DealBoard() {
     const name = form.name.trim();
     setSaving(true);
     try {
+      let salesNodeId = form.node || undefined;
+      if (form.node === "__new") {
+        const made = await api<{ id: string }>("/api/sales-nodes", {
+          method: "POST",
+          ...jsonBody({ name: form.newNodeName.trim(), kind: form.newNodeKind }),
+        });
+        salesNodeId = made.id;
+        await reloadNodes();
+      }
       await api("/api/deals", {
         method: "POST",
         ...jsonBody({
           companyName: name,
           title: form.title.trim() || name,
-          source: form.source,
-          referrer: form.referrer,
+          salesNodeId,
           ownerId: ownerShown || undefined,
           moduleIds,
           valuePaise: Math.round(Number(rupeesShown || 0) * 100),
@@ -119,14 +129,31 @@ export function DealBoard() {
           />
         </label>
         <label className="text-xs text-slate-500">
-          Found through
-          <select value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
-            <option value="">Choose…</option>
-            {leadSourceValues.map((v) => (
-              <option key={v} value={v}>{v}</option>
+          Found through (sales node)
+          <select value={form.node} onChange={(e) => setForm({ ...form, node: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
+            <option value="">Direct / no sales node</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.name} ({n.kindLabel})</option>
             ))}
+            <option value="__new">+ New sales node…</option>
           </select>
         </label>
+        {form.node === "__new" ? (
+          <>
+            <label className="text-xs text-slate-500">
+              Node name
+              <input required value={form.newNodeName} onChange={(e) => setForm({ ...form, newNodeName: e.target.value })} className="mt-1 block w-40 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
+            </label>
+            <label className="text-xs text-slate-500">
+              Kind
+              <select value={form.newNodeKind} onChange={(e) => setForm({ ...form, newNodeKind: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
+                {salesNodeKindValues.map((k) => (
+                  <option key={k} value={k}>{salesNodeKindLabels[k]}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
         <label className="text-xs text-slate-500">
           Owner
           <select value={ownerShown} onChange={(e) => setOwnerPick(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
@@ -134,10 +161,6 @@ export function DealBoard() {
               <option key={m.id} value={m.id}>{m.name}{m.id === currentUserId ? " (me)" : ""}</option>
             ))}
           </select>
-        </label>
-        <label className="text-xs text-slate-500">
-          Referred by (name)
-          <input value={form.referrer} onChange={(e) => setForm({ ...form, referrer: e.target.value })} className="mt-1 block w-40 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
         </label>
         <label className="text-xs text-slate-500">
           Deal title (optional)

@@ -32,6 +32,8 @@ const dealFields = z.object({
   expectedClose: dateOnly.nullable().optional(),
   nextFollowUp: dateOnly.nullable().optional(),
   ownerId: optionalText(100),
+  /** The sales node (staff, freelancer, agency or individual) that brought the lead. Fills `source` and `referrer`. */
+  salesNodeId: optionalText(100),
   /** Library modules this lead is interested in. On update the list replaces the old one. */
   moduleIds: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
 });
