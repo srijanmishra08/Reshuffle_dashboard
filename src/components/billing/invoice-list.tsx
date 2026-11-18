@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/billing/status-badge";
 
 const filters: (InvoiceStatus | "")[] = ["", "DRAFT", "ISSUED", "PARTIALLY_PAID", "PAID", "CANCELLED"];
 
-export function InvoiceList() {
+export function InvoiceList({ canDelete = false }: { canDelete?: boolean }) {
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
   const [summary, setSummary] = useState<Receivables | null>(null);
   const [status, setStatus] = useState<InvoiceStatus | "">("");
@@ -29,6 +29,22 @@ export function InvoiceList() {
       setError(e instanceof Error ? e.message : "Could not load invoices");
     }
   }, [status, overdueOnly]);
+
+  async function remove(r: InvoiceListRow) {
+    const name = r.number ?? "this draft";
+    const ok = window.confirm(
+      r.status === "DRAFT"
+        ? `Delete ${name}? This cannot be undone.`
+        : `Delete invoice ${name} for ${r.companyName}? It is removed for good and its number is not reused. The saved PDF stays in PDFs from invoice software. This cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      await api(`/api/invoices/${r.id}/permanent`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete the invoice");
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
@@ -72,6 +88,7 @@ export function InvoiceList() {
               <th className="px-3 py-2">Due</th>
               <th className="px-3 py-2 text-right">Total</th>
               <th className="px-3 py-2 text-right">Balance</th>
+              {canDelete ? <th className="px-3 py-2"><span className="sr-only">Actions</span></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -85,10 +102,17 @@ export function InvoiceList() {
                 <td className="px-3 py-2">{r.dueDate ?? ""}</td>
                 <td className="px-3 py-2 text-right">{formatINR(r.totalPaise)}</td>
                 <td className="px-3 py-2 text-right">{formatINR(r.totalPaise - r.paidPaise)}</td>
+                {canDelete ? (
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => void remove(r)} className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50" aria-label={`Delete ${r.number ?? "draft"}`}>
+                      Delete
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
             {rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">No invoices yet.</td></tr>
+              <tr><td colSpan={canDelete ? 7 : 6} className="px-3 py-6 text-center text-slate-500">No invoices yet.</td></tr>
             ) : null}
           </tbody>
         </table>

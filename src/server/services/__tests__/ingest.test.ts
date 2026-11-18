@@ -334,3 +334,53 @@ describe("recording an uploaded invoice in the dashboard", () => {
     expect((await recordUploadedInvoice(db, ctx, "missing", {})).ok).toBe(false);
   });
 });
+
+describe("an empty Settings page when an invoice arrives", () => {
+  const sendWith = (n: number, issuer: Record<string, unknown>, party = "Fake Traders") => {
+    const { storage } = fakeStorage();
+    const json = JSON.stringify({ clientName: party, clientGstin: "", items: [{ description: "Work", amount: "1000" }], ...issuer });
+    return ingestDocument(
+      db,
+      key,
+      { docType: "INVOICE", number: `SET/2026/${n}`, partyName: party, amountText: "₹1,180.00", dateText: "12 May 2026", filename: `set-${n}.pdf`, invoiceJson: json },
+      pdf(`settings test ${n}`),
+      storage
+    );
+  };
+
+  async function withoutSettings<T>(run: () => Promise<T>): Promise<T> {
+    const [saved] = await db.select().from(schema.orgSettings).where(eq(schema.orgSettings.orgId, "default"));
+    await db.delete(schema.orgSettings).where(eq(schema.orgSettings.orgId, "default"));
+    try {
+      return await run();
+    } finally {
+      await db.delete(schema.orgSettings).where(eq(schema.orgSettings.orgId, "default"));
+      await db.insert(schema.orgSettings).values(saved);
+    }
+  }
+
+  it("fills in the company's state from the GSTIN on the invoice, then records it", async () => {
+    await withoutSettings(async () => {
+      const res = must(await sendWith(1, { issuerName: "Sender Co", issuerGstin: "22AAPCR2685E1Z9", issuerAddress: "Raipur" }));
+      expect(res).toMatchObject({ recorded: true, recordIssue: null });
+      const [s] = await db.select().from(schema.orgSettings).where(eq(schema.orgSettings.orgId, "default"));
+      expect(s).toMatchObject({ stateCode: "22", gstin: "22AAPCR2685E1Z9", legalName: "Sender Co", address: "Raipur" });
+    });
+  });
+
+  it("does not create a client when the state is unknown and cannot be worked out", async () => {
+    await withoutSettings(async () => {
+      const before = (await db.select().from(schema.companies)).length;
+      const res = must(await sendWith(2, {}, "Brand New Buyer"));
+      expect(res).toMatchObject({ recorded: false, recordIssue: "NO_SETTINGS" });
+      expect((await db.select().from(schema.companies)).length).toBe(before);
+    });
+  });
+
+  it("never overwrites what is already saved in Settings", async () => {
+    const res = must(await sendWith(3, { issuerName: "Someone Else", issuerGstin: "29AAAAA0000A1Z5", issuerAddress: "Elsewhere" }));
+    expect(res.recorded).toBe(true);
+    const [s] = await db.select().from(schema.orgSettings).where(eq(schema.orgSettings.orgId, "default"));
+    expect(s).toMatchObject({ stateCode: "22", legalName: "Test Studio", address: "1 Example Road" });
+  });
+});

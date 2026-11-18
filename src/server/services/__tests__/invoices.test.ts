@@ -7,6 +7,7 @@ import {
   cancelInvoice,
   createInvoice,
   deleteDraftInvoice,
+  deleteInvoicePermanently,
   getInvoiceSnapshot,
   issueInvoice,
   listInvoices,
@@ -222,6 +223,39 @@ describe("cancel with credit note", () => {
     must(await cancelInvoice(db, ctx, other.id, { reason: "Duplicate" }));
     const twice = await cancelInvoice(db, ctx, other.id, { reason: "Duplicate" });
     expect(twice).toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+});
+
+describe("deleting an invoice for good (admin clean-up)", () => {
+  it("removes an issued, unpaid invoice with its lines and PDF link, and frees its saved PDF to be recorded again", async () => {
+    const inv = await issued(inState);
+    const [doc] = await db.insert(schema.uploadedDocuments).values({ orgId: "default", docType: "INVOICE", number: inv.number ?? "", filename: "x.pdf", blobKey: "k", sizeBytes: 1, sha256: `del-${inv.id}`, invoiceId: inv.id, details: { clientName: "x" } }).returning();
+    await db.insert(schema.attachments).values({ orgId: "default", entityType: "INVOICE", entityId: inv.id, blobKey: "k", filename: "x.pdf", mime: "application/pdf", size: 1 });
+
+    must(await deleteInvoicePermanently(db, ctx, inv.id));
+
+    expect(await db.select().from(schema.invoices).where(eq(schema.invoices.id, inv.id))).toHaveLength(0);
+    expect(await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, inv.id))).toHaveLength(0);
+    expect(await db.select().from(schema.attachments).where(eq(schema.attachments.entityId, inv.id))).toHaveLength(0);
+    const after = (await db.select().from(schema.uploadedDocuments).where(eq(schema.uploadedDocuments.id, doc.id)))[0];
+    expect(after.invoiceId).toBeNull();
+    expect((await deleteInvoicePermanently(db, ctx, inv.id)).ok).toBe(false);
+  });
+
+  it("deletes a draft too, and only inside the organisation", async () => {
+    const d = await draft(inState);
+    expect((await deleteInvoicePermanently(db, { orgId: "elsewhere", userId: "x" }, d.id)).ok).toBe(false);
+    must(await deleteInvoicePermanently(db, ctx, d.id));
+  });
+
+  it("refuses when a payment or a credit note exists", async () => {
+    const paid = await issued(inState);
+    must(await recordPayment(db, ctx, paid.id, { amountPaise: 1000_00, paidAt: "2026-06-12" }));
+    expect(await deleteInvoicePermanently(db, ctx, paid.id)).toMatchObject({ ok: false, code: "CONFLICT" });
+
+    const cancelled = await issued(inState);
+    must(await cancelInvoice(db, ctx, cancelled.id, { reason: "Raised in error" }));
+    expect(await deleteInvoicePermanently(db, ctx, cancelled.id)).toMatchObject({ ok: false, code: "CONFLICT" });
   });
 });
 

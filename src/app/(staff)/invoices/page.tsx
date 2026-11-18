@@ -30,7 +30,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Link>
         </nav>
       ) : null}
-      {showPdfs ? <InvoicePdfLibrary isAdmin={user?.role === "ADMIN"} /> : <InvoiceList />}
+      {showPdfs ? <InvoicePdfLibrary isAdmin={user?.role === "ADMIN"} /> : <InvoiceList canDelete={user?.role === "ADMIN"} />}
     </DashboardShell>
   );
 }
