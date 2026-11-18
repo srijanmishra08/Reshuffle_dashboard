@@ -12,6 +12,10 @@ export const uploadedInvoiceDetailsSchema = z.object({
   advance: z.string().trim().max(20).default(""),
   paymentTerms: z.string().trim().max(200).default(""),
   notes: z.string().trim().max(2000).default(""),
+  /** Who issued it (the sender's own company). Used once to fill an empty Settings page, never to overwrite it. */
+  issuerName: z.string().trim().max(200).default(""),
+  issuerGstin: z.string().trim().max(20).default(""),
+  issuerAddress: z.string().trim().max(600).default(""),
 });
 export type UploadedInvoiceDetails = z.infer<typeof uploadedInvoiceDetailsSchema>;
 
@@ -24,6 +28,6 @@ export const recordIssueMessages = {
   NEW_CLIENT: "The client is not in the dashboard yet.",
   NUMBER_USED: "Another dashboard invoice already uses this number.",
   TOTAL_MISMATCH: "The total on the PDF does not match the total the dashboard works out from the line items.",
-  NO_SETTINGS: "Set the organisation's state in Settings before invoices can be recorded.",
+  NO_SETTINGS: "The dashboard does not know your company's state yet. Open Settings, set the state, then press Record as invoice.",
 } as const;
 export type RecordIssue = keyof typeof recordIssueMessages;
