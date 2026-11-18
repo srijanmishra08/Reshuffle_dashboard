@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { createCompany } from "../companies";
 import { createDeal, getDeal, listDeals, pipelineSummary, saveDiagnosis, transitionDeal, updateDeal } from "../deals";
 import { canTransitionDeal } from "@/server/models/deals";
+import { listStaff } from "../staff";
 
 const ctx = { orgId: "default", userId: "user-1" };
 let db: Db;
@@ -31,6 +32,43 @@ describe("deal stage rules", () => {
     expect(canTransitionDeal("LOST", "LEAD")).toBe(true);
     expect(canTransitionDeal("LOST", "CONTACTED")).toBe(false);
     expect(canTransitionDeal("WON", "LOST")).toBe(false);
+  });
+});
+
+describe("lead owners", () => {
+  const person = (id: string, name: string, role = "MEMBER", orgId = "default", active = true) =>
+    ({ id, name, email: `${id}@example.test`, role, orgId, active, createdAt: new Date(), updatedAt: new Date() });
+
+  it("assigns a lead to a team member, shows their name, and refuses anyone else", async () => {
+    await db.insert(schema.user).values([
+      person("own-sales", "Sales Staff One"),
+      person("own-admin", "Admin Person", "ADMIN"),
+      person("own-client", "A Client", "CLIENT"),
+      person("own-gone", "Left The Team", "MEMBER", "default", false),
+      person("own-other", "Other Org Person", "MEMBER", "other"),
+    ]);
+
+    const deal = must(await createDeal(db, ctx, { companyName: "Owner Co", title: "Owned", ownerId: "own-sales" }));
+    expect(deal.ownerId).toBe("own-sales");
+    expect(deal.ownerName).toBe("Sales Staff One");
+    expect(must(await listDeals(db, ctx)).find((d) => d.id === deal.id)?.ownerName).toBe("Sales Staff One");
+    expect(must(await listDeals(db, ctx, { ownerId: "own-sales" })).map((d) => d.id)).toEqual([deal.id]);
+
+    const reassigned = must(await updateDeal(db, ctx, deal.id, { ownerId: "own-admin" }));
+    expect(reassigned.ownerName).toBe("Admin Person");
+
+    for (const bad of ["own-client", "own-gone", "own-other", "nobody"]) {
+      expect((await updateDeal(db, ctx, deal.id, { ownerId: bad })).ok, bad).toBe(false);
+      expect((await createDeal(db, ctx, { companyName: "Owner Co", title: "x", ownerId: bad })).ok, bad).toBe(false);
+    }
+  });
+
+  it("lists the active team members of the organisation only", async () => {
+    const staff = must(await listStaff(db, ctx)).map((m) => m.id);
+    expect(staff).toEqual(expect.arrayContaining(["own-sales", "own-admin"]));
+    expect(staff).not.toContain("own-client");
+    expect(staff).not.toContain("own-gone");
+    expect(staff).not.toContain("own-other");
   });
 });
 

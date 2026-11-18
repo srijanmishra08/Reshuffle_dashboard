@@ -12,10 +12,11 @@ import { newId } from "@/lib/ids";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { addCompanyModules, resolveModules } from "@/server/services/module-links";
+import { isStaffMember } from "@/server/services/staff";
 import { canTransitionDeal, dealStageValues, type DealStage } from "@/server/models/deals";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { deals, dealStageHistory, diagnoses, companies, dealModules, modulesLibrary } = schema;
+const { deals, dealStageHistory, diagnoses, companies, dealModules, modulesLibrary, user } = schema;
 
 type DealRow = typeof deals.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -41,6 +42,7 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
   if (!parsed.success) return fail("VALIDATION", "Invalid deal", parsed.error.flatten());
   const input = parsed.data;
 
+  if (input.ownerId && !(await isStaffMember(db, ctx.orgId, input.ownerId))) return fail("VALIDATION", "Unknown owner");
   const resolved = await resolveModules(db, ctx.orgId, input.moduleIds);
   if (!resolved) return fail("VALIDATION", "Unknown module");
   const moduleIds = resolved.ids;
@@ -130,6 +132,7 @@ export async function updateDeal(db: Db, ctx: ServiceContext, id: string, raw: u
   const existing = await findDeal(db, ctx.orgId, id);
   if (!existing) return fail("NOT_FOUND", "Deal not found");
 
+  if (patch.ownerId && !(await isStaffMember(db, ctx.orgId, patch.ownerId))) return fail("VALIDATION", "Unknown owner");
   const { moduleIds: requestedModules, ...dealPatch } = patch;
   const resolvedModules = requestedModules === undefined ? undefined : await resolveModules(db, ctx.orgId, requestedModules);
   if (resolvedModules === null) return fail("VALIDATION", "Unknown module");
@@ -175,7 +178,9 @@ export async function getDeal(db: Db, ctx: ServiceContext, id: string) {
       .orderBy(asc(modulesLibrary.name)),
   ]);
 
-  return ok({ ...deal, company: company[0] ?? null, modules, history, diagnosis: summariseDiagnosis(entries), diagnosisEntries: entries });
+  const owner = deal.ownerId ? await db.select({ name: user.name }).from(user).where(eq(user.id, deal.ownerId)).limit(1) : [];
+
+  return ok({ ...deal, ownerName: owner[0]?.name ?? null, company: company[0] ?? null, modules, history, diagnosis: summariseDiagnosis(entries), diagnosisEntries: entries });
 }
 
 export function summariseDiagnosis(entries: { bucket: string; painScore: number }[]) {
@@ -217,10 +222,12 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
       quotationStatus: deals.quotationStatus,
       nextFollowUp: deals.nextFollowUp,
       ownerId: deals.ownerId,
+      ownerName: user.name,
       updatedAt: deals.updatedAt,
     })
     .from(deals)
     .innerJoin(companies, eq(companies.id, deals.companyId))
+    .leftJoin(user, eq(user.id, deals.ownerId))
     .where(and(...conditions))
     .orderBy(desc(deals.updatedAt))
     .limit(q.limit)

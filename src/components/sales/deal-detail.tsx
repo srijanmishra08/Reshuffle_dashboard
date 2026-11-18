@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
+import { useStaff } from "@/lib/use-staff";
 import {
   canTransitionDeal,
   dealStageLabels,
@@ -33,6 +34,8 @@ type Deal = {
   nextFollowUp: string | null;
   lostReason?: string | null;
   modules: { id: string; name: string }[];
+  ownerId: string | null;
+  ownerName: string | null;
   company: { id: string; name: string; lifecycle: string } | null;
   history: { id?: string; fromStage: string | null; toStage: string; at: string }[];
   diagnosis: { bucket: string; totalPain: number; answered: number }[];
@@ -64,6 +67,7 @@ export function DealDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState<"details" | "diagnosis" | "scopes">("details");
   const [form, setForm] = useState<Record<string, string>>({});
+  const { staff } = useStaff();
   const [allModules, setAllModules] = useState<ModuleOption[]>([]);
   const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Record<string, { answer: string; painScore: number }>>({});
@@ -81,6 +85,7 @@ export function DealDetail({ id }: { id: string }) {
       temperature: d.temperature ?? "",
       expectedClose: d.expectedClose ?? "",
       nextFollowUp: d.nextFollowUp ?? "",
+      ownerId: d.ownerId ?? "",
     });
     setModuleIds(d.modules.map((m) => m.id));
     const next: Record<string, { answer: string; painScore: number }> = {};
@@ -153,6 +158,7 @@ export function DealDetail({ id }: { id: string }) {
               temperature: form.temperature || null,
               expectedClose: form.expectedClose || null,
               nextFollowUp: form.nextFollowUp || null,
+              ownerId: form.ownerId || undefined,
               moduleIds,
             }),
           })
@@ -365,6 +371,15 @@ export function DealDetail({ id }: { id: string }) {
                   </div>
                 )}
               </fieldset>
+              <label className={label}>
+                Owner
+                <select value={form.ownerId ?? ""} onChange={set("ownerId")} className={input}>
+                  {!staff.some((m) => m.id === form.ownerId) ? <option value={form.ownerId ?? ""}>{deal?.ownerName ?? "No owner"}</option> : null}
+                  {staff.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </label>
               <label className={label}>
                 Quotation status
                 <select value={form.quotationStatus ?? "NONE"} onChange={set("quotationStatus")} className={input}>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
+import { useStaff } from "@/lib/use-staff";
 import { dealStageLabels, openDealStages, type DealStage } from "@/server/models/deals";
 
 type Lead = {
@@ -16,6 +17,8 @@ type Lead = {
   source: string | null;
   referrer: string | null;
   nextFollowUp: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
   modules: { id: string; name: string }[];
 };
 
@@ -55,6 +58,8 @@ export function OutreachBoard() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState("");
   const [base, setBase] = useState("");
+  const { staff, currentUserId } = useStaff();
+  const [view, setView] = useState<"all" | "mine" | string>("all");
 
   const load = useCallback(async () => {
     try {
@@ -87,8 +92,9 @@ export function OutreachBoard() {
 
   if (!leads) return <p className="text-sm text-slate-500">{error || "Loading leads..."}</p>;
 
+  const visible = leads.filter((l) => view === "all" || l.ownerId === (view === "mine" ? currentUserId : view));
   const byLane = (key: string) =>
-    leads
+    visible
       .filter((l) => laneOf(l, base) === key)
       .sort((a, b) => (a.nextFollowUp ?? "9999").localeCompare(b.nextFollowUp ?? "9999") || a.companyName.localeCompare(b.companyName));
 
@@ -102,6 +108,16 @@ export function OutreachBoard() {
         )}
       </p>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      <label className="flex items-center gap-2 text-xs text-slate-500">
+        Show
+        <select value={view} onChange={(e) => setView(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900">
+          <option value="all">Everyone&apos;s leads</option>
+          <option value="mine">My leads</option>
+          {staff.filter((m) => m.id !== currentUserId).map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </label>
       <div className="flex gap-3 overflow-x-auto pb-2">
         {lanes.map((lane) => {
           const cards = byLane(lane.key);
@@ -120,6 +136,7 @@ export function OutreachBoard() {
                       {lead.valuePaise > 0 ? ` · ${formatINR(lead.valuePaise)}` : ""}
                       {lead.temperature ? ` · ${lead.temperature.toLowerCase()}` : ""}
                     </p>
+                    <p className="text-xs text-slate-400">{lead.ownerName ? `Owner: ${lead.ownerName}` : "No owner"}</p>
                     {lead.source || lead.referrer ? (
                       <p className="text-xs text-slate-500">
                         {lead.source ?? "Source not set"}

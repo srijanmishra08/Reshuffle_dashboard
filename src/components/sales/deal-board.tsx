@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
+import { useStaff } from "@/lib/use-staff";
 import { canTransitionDeal, dealStageLabels, dealStageValues, leadSourceValues, type DealStage } from "@/server/models/deals";
 
 type DealRow = {
@@ -15,6 +16,8 @@ type DealRow = {
   temperature: string | null;
   nextFollowUp: string | null;
   modules: { id: string; name: string }[];
+  ownerId: string | null;
+  ownerName: string | null;
 };
 type ModuleOption = { id: string; name: string; category: string; defaultPricePaise: number };
 type StageSummary = { stage: DealStage; count: number; valuePaise: number };
@@ -26,6 +29,10 @@ export function DealBoard() {
   const emptyForm = { name: "", source: "", referrer: "", title: "", rupees: "" };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const { staff, currentUserId } = useStaff();
+  const [ownerPick, setOwnerPick] = useState("");
+  const [view, setView] = useState<"all" | "mine" | string>("all");
+  const ownerShown = ownerPick || currentUserId;
   const [modules, setModules] = useState<ModuleOption[]>([]);
   const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [valueTouched, setValueTouched] = useState(false);
@@ -80,6 +87,7 @@ export function DealBoard() {
           title: form.title.trim() || name,
           source: form.source,
           referrer: form.referrer,
+          ownerId: ownerShown || undefined,
           moduleIds,
           valuePaise: Math.round(Number(rupeesShown || 0) * 100),
         }),
@@ -116,6 +124,14 @@ export function DealBoard() {
             <option value="">Choose…</option>
             {leadSourceValues.map((v) => (
               <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-slate-500">
+          Owner
+          <select value={ownerShown} onChange={(e) => setOwnerPick(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
+            {staff.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}{m.id === currentUserId ? " (me)" : ""}</option>
             ))}
           </select>
         </label>
@@ -158,10 +174,20 @@ export function DealBoard() {
         <button disabled={saving} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? "Adding…" : "Add lead"}</button>
       </form>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      <label className="flex items-center gap-2 text-xs text-slate-500">
+        Show
+        <select value={view} onChange={(e) => setView(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900">
+          <option value="all">Everyone&apos;s leads</option>
+          <option value="mine">My leads</option>
+          {staff.filter((m) => m.id !== currentUserId).map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </label>
       <div className="flex gap-3 overflow-x-auto pb-2">
         {dealStageValues.map((stage) => {
           const stats = summary.find((s) => s.stage === stage);
-          const cards = deals.filter((d) => d.stage === stage);
+          const cards = deals.filter((d) => d.stage === stage && (view === "all" || d.ownerId === (view === "mine" ? currentUserId : view)));
           return (
             <section key={stage} className="w-64 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-2">
               <header className="mb-2 px-1">
@@ -173,6 +199,7 @@ export function DealBoard() {
                   <article key={deal.id} className="rounded-lg border border-slate-200 bg-white p-2 text-sm">
                     <Link href={`/sales/${deal.id}`} className="font-medium text-slate-900 hover:underline">{deal.title}</Link>
                     <p className="text-xs text-slate-500">{deal.companyName} · {formatINR(deal.valuePaise)}</p>
+                    <p className="text-xs text-slate-400">{deal.ownerName ? `Owner: ${deal.ownerName}` : "No owner"}</p>
                     {deal.modules.length > 0 ? (
                       <p className="mt-1 flex flex-wrap gap-1">
                         {deal.modules.map((m) => (
