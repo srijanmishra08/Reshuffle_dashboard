@@ -248,7 +248,7 @@ export async function listNotices(db: Db, ctx: ServiceContext, opts: { includeBi
       kind: "Follow-up",
       title: f.companyName,
       detail: f.nextAction ?? "",
-      href: `/crm/${f.companyId}`,
+      href: f.href,
       tone: "info" as const,
     })),
     ...accepted.map((s) => ({

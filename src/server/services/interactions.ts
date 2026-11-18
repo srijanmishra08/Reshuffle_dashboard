@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lte } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -9,8 +9,9 @@ import {
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import { getCompany, type ServiceContext } from "@/server/services/companies";
+import { dealStageLabels, openDealStages, type DealStage } from "@/server/models/deals";
 
-const { interactions, meetings, companies, contacts } = schema;
+const { interactions, meetings, companies, contacts, deals } = schema;
 
 const interactionColumns = {
   id: interactions.id,
@@ -180,33 +181,107 @@ export async function setNextActionDone(
   return getInteraction(db, ctx, companyId, interactionId);
 }
 
-/** Pending next actions due on or before `until` (default: the next 24 hours, including overdue). */
+export type DueFollowUp = {
+  /** Unique across both kinds: a logged touch uses its interaction id, a lead uses `lead-<deal id>`. */
+  id: string;
+  /** `TOUCH` is a next action logged on a client; `LEAD` is the next follow-up date on an open deal. */
+  kind: "TOUCH" | "LEAD";
+  companyId: string;
+  companyName: string;
+  dealId: string | null;
+  nextAction: string | null;
+  nextActionAt: Date;
+  /** A lead's follow-up is a calendar day, not a time. */
+  allDay: boolean;
+  type: string;
+  /** Where to act on it: the client page for a touch, the deal page for a lead. */
+  href: string;
+};
+
+const istDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+
+/**
+ * Everything the team has promised to do next, from both places it is recorded: next actions logged on a client
+ * (due on or before `until`, default the next 24 hours) and the follow-up date on every open deal. Overdue items are
+ * always included. A lead's date counts as due until the end of that day, India time.
+ */
 export async function listDueFollowUps(db: Db, ctx: ServiceContext, until?: Date) {
-  const cutoff = until ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const cutoff = until ?? new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const rows = await db
-    .select({
-      id: interactions.id,
-      companyId: interactions.companyId,
-      companyName: companies.name,
-      nextAction: interactions.nextAction,
-      nextActionAt: interactions.nextActionAt,
-      type: interactions.type,
-    })
-    .from(interactions)
-    .innerJoin(companies, eq(companies.id, interactions.companyId))
-    .where(
-      and(
-        eq(interactions.orgId, ctx.orgId),
-        isNotNull(interactions.nextActionAt),
-        isNull(interactions.nextActionDoneAt),
-        isNull(companies.archivedAt),
-        lte(interactions.nextActionAt, cutoff)
-      )
-    )
-    .orderBy(asc(interactions.nextActionAt));
+  const [touches, leads] = await Promise.all([
+    db
+      .select({
+        id: interactions.id,
+        companyId: interactions.companyId,
+        companyName: companies.name,
+        nextAction: interactions.nextAction,
+        nextActionAt: interactions.nextActionAt,
+        type: interactions.type,
+      })
+      .from(interactions)
+      .innerJoin(companies, eq(companies.id, interactions.companyId))
+      .where(
+        and(
+          eq(interactions.orgId, ctx.orgId),
+          isNotNull(interactions.nextActionAt),
+          isNull(interactions.nextActionDoneAt),
+          isNull(companies.archivedAt),
+          lte(interactions.nextActionAt, cutoff)
+        )
+      ),
+    db
+      .select({
+        id: deals.id,
+        title: deals.title,
+        stage: deals.stage,
+        nextFollowUp: deals.nextFollowUp,
+        companyId: deals.companyId,
+        companyName: companies.name,
+      })
+      .from(deals)
+      .innerJoin(companies, eq(companies.id, deals.companyId))
+      .where(
+        and(
+          eq(deals.orgId, ctx.orgId),
+          inArray(deals.stage, [...openDealStages]),
+          isNotNull(deals.nextFollowUp),
+          lte(deals.nextFollowUp, istDay(cutoff)),
+          isNull(companies.archivedAt)
+        )
+      ),
+  ]);
 
-  return ok(rows);
+  const today = istDay(now);
+  const items: DueFollowUp[] = [
+    ...touches.flatMap((t) =>
+      t.nextActionAt
+        ? [{ id: t.id, kind: "TOUCH" as const, companyId: t.companyId, companyName: t.companyName, dealId: null, nextAction: t.nextAction, nextActionAt: t.nextActionAt, allDay: false, type: t.type, href: `/crm/${t.companyId}` }]
+        : []
+    ),
+    ...leads.flatMap((l) => {
+      if (!l.nextFollowUp) return [];
+      const dueAt = new Date(`${l.nextFollowUp}T23:59:59+05:30`);
+      if (l.nextFollowUp > today && dueAt > cutoff) return [];
+      return [
+        {
+          id: `lead-${l.id}`,
+          kind: "LEAD" as const,
+          companyId: l.companyId,
+          companyName: l.companyName,
+          dealId: l.id,
+          nextAction: `Follow up: ${l.title} (${dealStageLabels[l.stage as DealStage] ?? l.stage})`,
+          nextActionAt: dueAt,
+          allDay: true,
+          type: "LEAD",
+          href: `/sales/${l.id}`,
+        },
+      ];
+    }),
+  ];
+
+  items.sort((a, b) => a.nextActionAt.getTime() - b.nextActionAt.getTime());
+  return ok(items);
 }
 
 export async function listMeetings(db: Db, ctx: ServiceContext, companyId: string) {

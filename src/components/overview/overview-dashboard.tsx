@@ -23,13 +23,14 @@ type Overview = {
   clients: { active: number };
   projects: { active: number; onHold: number; atRisk: number; tasksOverdue: number; inClientReview: number };
   cash: { incomePaise: number; expensePaise: number };
-  followUps: { id: string; companyId: string; companyName: string; nextAction: string | null; nextActionAt: string | null }[];
+  followUps: { id: string; kind: "TOUCH" | "LEAD"; companyId: string; companyName: string; href: string; nextAction: string | null; nextActionAt: string | null; allDay: boolean }[];
   meetings: { id: string; title: string; at: string; companyId: string | null; companyName: string | null }[];
   activity: { id: string; action: string; module: string; entityType: string; createdAt: string }[];
 };
 
 const card = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm";
 const heading = "text-xs font-semibold uppercase tracking-[0.14em] text-slate-500";
+const dayOnly = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
 
@@ -137,7 +138,10 @@ export function OverviewDashboard() {
         <section className={card}>
           <div className="flex items-center justify-between">
             <h3 className={heading}>Follow-ups due this week</h3>
-            <Link href="/crm" className="text-xs text-slate-600 underline">Open clients</Link>
+            <span className="flex gap-3 text-xs text-slate-600">
+              <Link href="/outreach" className="underline">Outreach</Link>
+              <Link href="/crm" className="underline">Clients</Link>
+            </span>
           </div>
           {data.followUps.length === 0 ? (
             <p className="mt-3 text-sm text-slate-500">Nothing due.</p>
@@ -145,11 +149,11 @@ export function OverviewDashboard() {
             <ul className="mt-3 space-y-2 text-sm">
               {data.followUps.map((f) => (
                 <li key={f.id} className="flex justify-between gap-3">
-                  <Link href={`/crm/${f.companyId}`} className="text-slate-800 hover:underline">
+                  <Link href={f.href} className="text-slate-800 hover:underline">
                     <span className="font-medium">{f.companyName}</span>
                     {f.nextAction ? `: ${f.nextAction}` : ""}
                   </Link>
-                  <span className="shrink-0 text-xs text-slate-500">{day(f.nextActionAt)}</span>
+                  <span className="shrink-0 text-xs text-slate-500">{f.allDay && f.nextActionAt ? dayOnly(f.nextActionAt) : day(f.nextActionAt)}</span>
                 </li>
               ))}
             </ul>

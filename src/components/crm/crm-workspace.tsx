@@ -149,7 +149,7 @@ export function CrmWorkspace() {
             Add
           </button>
         </form>
-        <FollowUpsPanel items={followUps} />
+        <FollowUpsPanel items={followUps} onChanged={() => void load().catch((error: Error) => setMessage(error.message))} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

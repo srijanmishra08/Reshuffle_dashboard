@@ -58,11 +58,16 @@ export type Meeting = {
 
 export type FollowUp = {
   id: string;
+  /** `TOUCH`: a next action logged on the client. `LEAD`: the follow-up date on an open deal. */
+  kind: "TOUCH" | "LEAD";
   companyId: string;
   companyName: string;
+  dealId: string | null;
   nextAction: string | null;
   nextActionAt: string;
+  allDay: boolean;
   type: string;
+  href: string;
 };
 
 export function formatDate(value: string | null | undefined): string {

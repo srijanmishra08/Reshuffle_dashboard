@@ -3,7 +3,7 @@ import { createTestDb } from "@/test/db";
 import { eq } from "drizzle-orm";
 import { schema, type Db } from "@/server/db/client";
 import { archiveCompany, createCompany, getCompany, listCompanies, updateCompany } from "@/server/services/companies";
-import { createDeal, transitionDeal } from "@/server/services/deals";
+import { createDeal, transitionDeal, updateDeal } from "@/server/services/deals";
 import { archiveContact, createContact, listContacts, updateContact } from "@/server/services/contacts";
 import {
   createInteraction,
@@ -137,6 +137,62 @@ describe("companies", () => {
     must(await transitionDeal(db, ctx, deal.id, { to: "LOST", lostReason: "no budget" }));
     must(await archiveCompany(db, ctx, company.id));
     expect(await getCompany(db, ctx, company.id)).toMatchObject({ ok: false, code: "NOT_FOUND" });
+  });
+});
+
+describe("follow-ups from leads", () => {
+  const istDay = (offsetDays: number) => {
+    const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+  };
+
+  it("lists open leads with a follow-up date alongside logged next actions, and drops them when closed or cleared", async () => {
+    const overdueCo = must(await createCompany(db, ctx, { name: "Fu Overdue Co" }));
+    const todayCo = must(await createCompany(db, ctx, { name: "Fu Today Co" }));
+    const laterCo = must(await createCompany(db, ctx, { name: "Fu Later Co" }));
+    const closedCo = must(await createCompany(db, ctx, { name: "Fu Closed Co" }));
+    const touchCo = must(await createCompany(db, ctx, { name: "Fu Touch Co" }));
+
+    const overdue = must(await createDeal(db, ctx, { companyId: overdueCo.id, title: "Overdue lead", nextFollowUp: istDay(-2) }));
+    const today = must(await createDeal(db, ctx, { companyId: todayCo.id, title: "Today lead", nextFollowUp: istDay(0) }));
+    const later = must(await createDeal(db, ctx, { companyId: laterCo.id, title: "Next week lead", nextFollowUp: istDay(4) }));
+    const closed = must(await createDeal(db, ctx, { companyId: closedCo.id, title: "Dropped lead", nextFollowUp: istDay(-1) }));
+    must(await transitionDeal(db, ctx, closed.id, { to: "LOST", lostReason: "no budget" }));
+    must(await createDeal(db, ctx, { companyId: touchCo.id, title: "No date lead" }));
+    must(
+      await createInteraction(db, ctx, touchCo.id, {
+        type: "CALL",
+        summary: "Spoke",
+        nextAction: "Send brochure",
+        nextActionAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+    );
+
+    const due = must(await listDueFollowUps(db, ctx));
+    const names = due.map((f) => f.companyName);
+    expect(names).toContain("Fu Overdue Co");
+    expect(names).toContain("Fu Today Co");
+    expect(names).toContain("Fu Touch Co");
+    expect(names).not.toContain("Fu Later Co");
+    expect(names).not.toContain("Fu Closed Co");
+
+    const lead = due.find((f) => f.companyName === "Fu Overdue Co")!;
+    expect(lead).toMatchObject({ kind: "LEAD", allDay: true, dealId: overdue.id, href: `/sales/${overdue.id}`, id: `lead-${overdue.id}` });
+    expect(lead.nextAction).toContain("Overdue lead");
+    expect(due.find((f) => f.companyName === "Fu Touch Co")).toMatchObject({ kind: "TOUCH", allDay: false, dealId: null, href: `/crm/${touchCo.id}` });
+    // Oldest first: the overdue lead comes before today's.
+    expect(names.indexOf("Fu Overdue Co")).toBeLessThan(names.indexOf("Fu Today Co"));
+    // A lead due today is not overdue until the day is over.
+    expect(due.find((f) => f.companyName === "Fu Today Co")!.nextActionAt.getTime()).toBeGreaterThan(Date.now());
+
+    const week = must(await listDueFollowUps(db, ctx, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))).map((f) => f.companyName);
+    expect(week).toContain("Fu Later Co");
+
+    must(await updateDeal(db, ctx, today.id, { nextFollowUp: null }));
+    must(await updateDeal(db, ctx, later.id, { nextFollowUp: istDay(30) }));
+    const after = must(await listDueFollowUps(db, ctx, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))).map((f) => f.companyName);
+    expect(after).not.toContain("Fu Today Co");
+    expect(after).not.toContain("Fu Later Co");
   });
 });
 

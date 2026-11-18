@@ -11,7 +11,7 @@ Last checked against the code on 2026-11-18. The Overview (`/`, `services/overvi
 | Clients | active clients |
 | Projects | active and planned, on hold, at risk (late milestones), tasks overdue, tasks in client review |
 | Cash | income and expense from the ledger |
-| Follow-ups and meetings | due follow-ups, upcoming meetings |
+| Follow-ups and meetings | due follow-ups (next actions logged on a client plus the follow-up date on every open lead, one list), upcoming meetings |
 | Activity | latest entries from the audit log |
 
 The Finance page adds receivables aging, a monthly view, the GST summary and a B2B CSV. The notification bell lists overdue invoices, overdue tasks and work waiting on the client.
