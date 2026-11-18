@@ -278,30 +278,25 @@ describe("recording an uploaded invoice in the dashboard", () => {
     expect(inv.totalPaise).toBe(118_000);
   });
 
-  it("does not create a client or an invoice for a client it does not know", async () => {
-    const before = { invoices: await invoiceCount(), companies: (await db.select().from(schema.companies)).length };
-    const res = must(await send(3, { party: "asd", json: detail({ clientName: "asd", clientGstin: "" }) }));
-    expect(res).toMatchObject({ recorded: false, recordIssue: "NEW_CLIENT" });
-    expect(await invoiceCount()).toBe(before.invoices);
-    expect((await db.select().from(schema.companies)).length).toBe(before.companies);
-    const listed = must(await listUploadedDocuments(db, ctx, { q: "REC/2026/3" }))[0];
-    expect(listed).toMatchObject({ recordNote: "NEW_CLIENT", canRecord: true, invoiceId: null });
-
-    const refused = await recordUploadedInvoice(db, ctx, res.id, { createClient: false });
-    expect(refused.ok).toBe(false);
-    const made = must(await recordUploadedInvoice(db, ctx, res.id, { createClient: true }));
-    const inv = must(await getInvoice(db, ctx, made.invoiceId));
+  it("creates the client and records the invoice when the client is not in the dashboard yet", async () => {
+    const before = (await db.select().from(schema.companies)).length;
+    const res = must(await send(3, { party: "asd", json: detail({ clientName: "asd", clientGstin: "not a gstin" }) }));
+    expect(res).toMatchObject({ recorded: true, recordIssue: null });
+    expect((await db.select().from(schema.companies)).length).toBe(before + 1);
+    const row = (await db.select().from(schema.uploadedDocuments).where(eq(schema.uploadedDocuments.id, res.id)))[0];
+    const inv = must(await getInvoice(db, ctx, row.invoiceId!));
     expect(inv).toMatchObject({ number: "REC/2026/3", companyName: "asd" });
     const client = (await db.select().from(schema.companies).where(eq(schema.companies.id, inv.companyId)))[0];
-    expect(client).toMatchObject({ source: "Invoice software", lifecycle: "ACTIVE" });
+    // A GSTIN that is not valid is not stored, so it cannot break the tax split.
+    expect(client).toMatchObject({ source: "Invoice software", lifecycle: "ACTIVE", gstin: null, stateCode: null });
     expect((await recordUploadedInvoice(db, ctx, res.id, { createClient: true })).ok).toBe(false);
   });
 
-  it("creates the client with its GSTIN and state when asked", async () => {
+  it("creates the client with its GSTIN and state", async () => {
     const res = must(await send(4, { party: "New Buyer", json: detail({ clientName: "New Buyer", clientGstin: "29AAAAA2222A1Z2", clientAddress: "Bengaluru" }) }));
-    expect(res.recordIssue).toBe("NEW_CLIENT");
-    const made = must(await recordUploadedInvoice(db, ctx, res.id, { createClient: true }));
-    const inv = must(await getInvoice(db, ctx, made.invoiceId));
+    expect(res.recorded).toBe(true);
+    const row = (await db.select().from(schema.uploadedDocuments).where(eq(schema.uploadedDocuments.id, res.id)))[0];
+    const inv = must(await getInvoice(db, ctx, row.invoiceId!));
     const client = (await db.select().from(schema.companies).where(eq(schema.companies.id, inv.companyId)))[0];
     expect(client).toMatchObject({ gstin: "29AAAAA2222A1Z2", stateCode: "29", address: "Bengaluru" });
     expect(inv.taxMode).toBe("INTER");

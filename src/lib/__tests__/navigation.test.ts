@@ -22,7 +22,8 @@ describe("navigation", () => {
   it("leaves no top-level page out of a department", () => {
     const app = path.join(process.cwd(), "src/app");
     // Every page in the team dashboard (the (staff) group) is listed, except the department landing pages. Sign-in, public pages and the outside portals live outside that group.
-    const outOfMenu = new Set(["api", "d"]);
+    // "invoice-pdfs" is only a redirect to the PDFs tab on the Invoices page.
+    const outOfMenu = new Set(["api", "d", "invoice-pdfs"]);
     const listed = new Set(allItems.map((i) => i.href.split("/")[1]));
     const staff = path.join(app, "(staff)");
     const missing = readdirSync(staff, { withFileTypes: true })
