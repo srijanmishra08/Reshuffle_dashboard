@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -12,7 +12,7 @@ import { logActivity } from "@/server/services/activity";
 
 export type ServiceContext = { orgId: string; userId: string };
 
-const { companies, verticals, interactions } = schema;
+const { companies, verticals, interactions, deals } = schema;
 
 /** Earliest pending next-action date for a company. */
 const nextActionAt = sql<string | null>`(
@@ -196,6 +196,15 @@ export async function archiveCompany(db: Db, ctx: ServiceContext, id: string) {
   const existing = await getCompany(db, ctx, id);
   if (!existing.ok) {
     return existing;
+  }
+
+  // An archived client would still sit on the sales board through its open deals, so close those first.
+  const open = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(deals)
+    .where(and(eq(deals.companyId, id), eq(deals.orgId, ctx.orgId), notInArray(deals.stage, ["WON", "LOST"])));
+  if (Number(open[0]?.n ?? 0) > 0) {
+    return fail("CONFLICT", "This client has open deals. Move them to Accepted or Lost on the Sales board first.");
   }
 
   const now = new Date();

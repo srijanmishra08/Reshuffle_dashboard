@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { schema } from "@/server/db/client";
 import {
@@ -14,7 +14,7 @@ import { logActivity } from "@/server/services/activity";
 import { canTransitionDeal, dealStageValues, type DealStage } from "@/server/models/deals";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { deals, dealStageHistory, diagnoses, companies } = schema;
+const { deals, dealStageHistory, diagnoses, companies, dealModules, modulesLibrary } = schema;
 
 type DealRow = typeof deals.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -35,10 +35,24 @@ function audit(db: Db, ctx: ServiceContext, action: string, id: string, metadata
   );
 }
 
+/** De-duplicated module ids, or null when any of them is not a module of this organisation. */
+async function validModuleIds(db: Db | Tx, orgId: string, ids: string[] | undefined): Promise<string[] | null> {
+  const unique = [...new Set(ids ?? [])];
+  if (unique.length === 0) return [];
+  const found = await db
+    .select({ id: modulesLibrary.id })
+    .from(modulesLibrary)
+    .where(and(eq(modulesLibrary.orgId, orgId), inArray(modulesLibrary.id, unique)));
+  return found.length === unique.length ? unique : null;
+}
+
 export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
   const parsed = dealInputSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION", "Invalid deal", parsed.error.flatten());
   const input = parsed.data;
+
+  const moduleIds = await validModuleIds(db, ctx.orgId, input.moduleIds);
+  if (!moduleIds) return fail("VALIDATION", "Unknown module");
 
   const id = newId();
   let companyId = input.companyId ?? "";
@@ -100,6 +114,9 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
       toStage: "LEAD",
       changedBy: ctx.userId,
     });
+    if (moduleIds.length > 0) {
+      await tx.insert(dealModules).values(moduleIds.map((moduleId) => ({ orgId: ctx.orgId, dealId: id, moduleId })));
+    }
   });
   if (newCompanyId) {
     await logActivity(
@@ -119,13 +136,25 @@ export async function updateDeal(db: Db, ctx: ServiceContext, id: string, raw: u
   const existing = await findDeal(db, ctx.orgId, id);
   if (!existing) return fail("NOT_FOUND", "Deal not found");
 
+  const { moduleIds: requestedModules, ...dealPatch } = patch;
+  const moduleIds = requestedModules === undefined ? undefined : await validModuleIds(db, ctx.orgId, requestedModules);
+  if (moduleIds === null) return fail("VALIDATION", "Unknown module");
+
   const changes: Partial<typeof deals.$inferInsert> = { updatedAt: new Date() };
-  for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
-    const value = patch[key];
+  for (const key of Object.keys(dealPatch) as (keyof typeof dealPatch)[]) {
+    const value = dealPatch[key];
     if (value !== undefined) (changes as Record<string, unknown>)[key] = value;
   }
 
-  await db.update(deals).set(changes).where(and(eq(deals.id, id), eq(deals.orgId, ctx.orgId)));
+  await db.transaction(async (tx: Tx) => {
+    await tx.update(deals).set(changes).where(and(eq(deals.id, id), eq(deals.orgId, ctx.orgId)));
+    if (moduleIds) {
+      await tx.delete(dealModules).where(and(eq(dealModules.dealId, id), eq(dealModules.orgId, ctx.orgId)));
+      if (moduleIds.length > 0) {
+        await tx.insert(dealModules).values(moduleIds.map((moduleId) => ({ orgId: ctx.orgId, dealId: id, moduleId })));
+      }
+    }
+  });
   await audit(db, ctx, "updated", id, { fields: Object.keys(patch) });
   return getDeal(db, ctx, id);
 }
@@ -134,7 +163,7 @@ export async function getDeal(db: Db, ctx: ServiceContext, id: string) {
   const deal = await findDeal(db, ctx.orgId, id);
   if (!deal) return fail("NOT_FOUND", "Deal not found");
 
-  const [company, history, entries] = await Promise.all([
+  const [company, history, entries, modules] = await Promise.all([
     db
       .select({ id: companies.id, name: companies.name, lifecycle: companies.lifecycle })
       .from(companies)
@@ -142,9 +171,15 @@ export async function getDeal(db: Db, ctx: ServiceContext, id: string) {
       .limit(1),
     db.select().from(dealStageHistory).where(eq(dealStageHistory.dealId, id)).orderBy(asc(dealStageHistory.at)),
     db.select().from(diagnoses).where(eq(diagnoses.dealId, id)).orderBy(asc(diagnoses.level), asc(diagnoses.bucket)),
+    db
+      .select({ id: modulesLibrary.id, name: modulesLibrary.name })
+      .from(dealModules)
+      .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
+      .where(eq(dealModules.dealId, id))
+      .orderBy(asc(modulesLibrary.name)),
   ]);
 
-  return ok({ ...deal, company: company[0] ?? null, history, diagnosis: summariseDiagnosis(entries), diagnosisEntries: entries });
+  return ok({ ...deal, company: company[0] ?? null, modules, history, diagnosis: summariseDiagnosis(entries), diagnosisEntries: entries });
 }
 
 export function summariseDiagnosis(entries: { bucket: string; painScore: number }[]) {
@@ -196,7 +231,16 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
     .limit(q.limit)
     .offset(q.offset);
 
-  return ok(rows);
+  const attached =
+    rows.length === 0
+      ? []
+      : await db
+          .select({ dealId: dealModules.dealId, id: modulesLibrary.id, name: modulesLibrary.name })
+          .from(dealModules)
+          .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
+          .where(inArray(dealModules.dealId, rows.map((r) => r.id)))
+          .orderBy(asc(modulesLibrary.name));
+  return ok(rows.map((r) => ({ ...r, modules: attached.filter((m) => m.dealId === r.id).map(({ id, name }) => ({ id, name })) })));
 }
 
 /** Count and total value per stage, over the same rows the board shows. */

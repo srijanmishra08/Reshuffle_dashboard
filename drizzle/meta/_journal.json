@@ -169,6 +169,13 @@
       "when": 1794917583534,
       "tag": "0023_pink_whiplash",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794989668805,
+      "tag": "0024_deal_modules",
+      "breakpoints": true
     }
   ]
 }

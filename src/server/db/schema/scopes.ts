@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
 import { deals } from "./deals";
@@ -81,4 +81,19 @@ export const scopeItems = pgTable(
     pricePaise: integer("price_paise").notNull().default(0),
   },
   (t) => [index("idx_scope_items_scope").on(t.scopeId, t.position)]
+).enableRLS();
+
+/** The library modules a lead is interested in, chosen on the sales board. */
+export const dealModules = pgTable(
+  "deal_modules",
+  {
+    orgId: text("org_id").notNull().default("default"),
+    dealId: text("deal_id")
+      .notNull()
+      .references(() => deals.id, { onDelete: "cascade" }),
+    moduleId: text("module_id")
+      .notNull()
+      .references(() => modulesLibrary.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.dealId, t.moduleId] }), index("idx_deal_modules_module").on(t.moduleId)]
 ).enableRLS();

@@ -3,6 +3,7 @@ import { createTestDb } from "@/test/db";
 import { eq } from "drizzle-orm";
 import { schema, type Db } from "@/server/db/client";
 import { archiveCompany, createCompany, getCompany, listCompanies, listVerticals, updateCompany } from "@/server/services/companies";
+import { createDeal, transitionDeal } from "@/server/services/deals";
 import { archiveContact, createContact, listContacts, updateContact } from "@/server/services/contacts";
 import {
   createInteraction,
@@ -83,6 +84,31 @@ describe("companies", () => {
 
   it("archives and hides a company", async () => {
     const company = must(await createCompany(db, ctx, { name: "Delta Interior" }));
+    must(await archiveCompany(db, ctx, company.id));
+    expect(await getCompany(db, ctx, company.id)).toMatchObject({ ok: false, code: "NOT_FOUND" });
+  });
+
+  it("edits a company's name, legal name, website, address, source and referrer", async () => {
+    const company = must(await createCompany(db, ctx, { name: "Old Name" }));
+    const updated = must(
+      await updateCompany(db, ctx, company.id, {
+        name: "New Name",
+        legalName: "New Name Pvt Ltd",
+        website: "https://new.example.test",
+        address: "Raipur",
+        source: "Agency",
+        referrer: "Meera",
+      })
+    );
+    expect(updated).toMatchObject({ name: "New Name", legalName: "New Name Pvt Ltd", source: "Agency", referrer: "Meera", address: "Raipur" });
+    expect((await updateCompany(db, ctx, company.id, { name: "  " })).ok).toBe(false);
+  });
+
+  it("will not archive a company that still has an open deal", async () => {
+    const company = must(await createCompany(db, ctx, { name: "Busy Client" }));
+    const deal = must(await createDeal(db, ctx, { companyId: company.id, title: "Open one" }));
+    expect(await archiveCompany(db, ctx, company.id)).toMatchObject({ ok: false, code: "CONFLICT" });
+    must(await transitionDeal(db, ctx, deal.id, { to: "LOST", lostReason: "no budget" }));
     must(await archiveCompany(db, ctx, company.id));
     expect(await getCompany(db, ctx, company.id)).toMatchObject({ ok: false, code: "NOT_FOUND" });
   });
