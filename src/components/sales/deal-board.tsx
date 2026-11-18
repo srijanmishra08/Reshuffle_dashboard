@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
-import { canTransitionDeal, dealStageLabels, dealStageValues, type DealStage } from "@/server/models/deals";
+import { canTransitionDeal, dealStageLabels, dealStageValues, leadSourceValues, type DealStage } from "@/server/models/deals";
 
 type DealRow = {
   id: string;
@@ -16,14 +16,14 @@ type DealRow = {
   nextFollowUp: string | null;
 };
 type StageSummary = { stage: DealStage; count: number; valuePaise: number };
-type CompanyOption = { id: string; name: string };
 
 export function DealBoard() {
   const [deals, setDeals] = useState<DealRow[]>([]);
   const [summary, setSummary] = useState<StageSummary[]>([]);
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ companyId: "", title: "", rupees: "" });
+  const emptyForm = { name: "", source: "", referrer: "", title: "", rupees: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -38,7 +38,6 @@ export function DealBoard() {
   useEffect(() => {
     const timer = setTimeout(() => {
       void load();
-      api<CompanyOption[]>("/api/companies").then(setCompanies).catch(() => undefined);
     }, 0);
     return () => clearTimeout(timer);
   }, [load]);
@@ -62,19 +61,25 @@ export function DealBoard() {
   async function create(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    const name = form.name.trim();
+    setSaving(true);
     try {
       await api("/api/deals", {
         method: "POST",
         ...jsonBody({
-          companyId: form.companyId,
-          title: form.title,
+          companyName: name,
+          title: form.title.trim() || name,
+          source: form.source,
+          referrer: form.referrer,
           valuePaise: Math.round(Number(form.rupees || 0) * 100),
         }),
       });
-      setForm({ companyId: "", title: "", rupees: "" });
+      setForm(emptyForm);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create deal");
+      setError(e instanceof Error ? e.message : "Could not add lead");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -83,23 +88,38 @@ export function DealBoard() {
       <Link href="/settings/modules" className="text-xs text-slate-500 underline">Manage module library</Link>
       <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
         <label className="text-xs text-slate-500">
-          Company
-          <select required value={form.companyId} onChange={(e) => setForm({ ...form, companyId: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
+          Lead / client name
+          <input
+            required
+            autoFocus
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Type any new name"
+            className="mt-1 block w-56 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+          />
+        </label>
+        <label className="text-xs text-slate-500">
+          Found through
+          <select value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900">
             <option value="">Choose…</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+            {leadSourceValues.map((v) => (
+              <option key={v} value={v}>{v}</option>
             ))}
           </select>
         </label>
         <label className="text-xs text-slate-500">
-          Deal title
-          <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
+          Referred by (name)
+          <input value={form.referrer} onChange={(e) => setForm({ ...form, referrer: e.target.value })} className="mt-1 block w-40 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
         </label>
         <label className="text-xs text-slate-500">
-          Value (₹)
+          Deal title (optional)
+          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Defaults to the name" className="mt-1 block w-44 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
+        </label>
+        <label className="text-xs text-slate-500">
+          Expected value (₹)
           <input type="number" min="0" value={form.rupees} onChange={(e) => setForm({ ...form, rupees: e.target.value })} className="mt-1 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
         </label>
-        <button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Add deal</button>
+        <button disabled={saving} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? "Adding…" : "Add lead"}</button>
       </form>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       <div className="flex gap-3 overflow-x-auto pb-2">

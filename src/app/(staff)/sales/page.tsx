@@ -3,7 +3,7 @@ import { DealBoard } from "@/components/sales/deal-board";
 
 export default function Page() {
   return (
-    <DashboardShell title="Sales" subtitle="Deals from lead to won, with value per stage.">
+    <DashboardShell title="Sales" subtitle="Leads from first contact to an accepted project, with value per stage.">
       <DealBoard />
     </DashboardShell>
   );
