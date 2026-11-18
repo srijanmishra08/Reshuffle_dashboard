@@ -25,7 +25,7 @@ type EventRow = {
   registered: number;
   paidCount: number;
 };
-type Registration = { id: string; name: string; contact: string | null; paid: boolean; attended: boolean };
+type Registration = { id: string; name: string; contact: string | null; paid: boolean; attended: boolean; dealId: string | null };
 type TeamMember = { id: string; name: string; role: string | null };
 type EventDetail = EventRow & {
   ticketPricePaise: number;
@@ -293,6 +293,11 @@ function EventDetailPanel({ id, onChanged, onClose }: { id: string; onChanged: (
                 <span className="flex shrink-0 items-center gap-2 text-xs">
                   <label className="flex items-center gap-1"><input type="checkbox" checked={r.paid} onChange={(e) => void run(() => api(`/api/events/${id}/registrations/${r.id}`, { method: "PATCH", ...jsonBody({ paid: e.target.checked }) }), "Could not update")} />Paid</label>
                   <label className="flex items-center gap-1"><input type="checkbox" checked={r.attended} onChange={(e) => void run(() => api(`/api/events/${id}/registrations/${r.id}`, { method: "PATCH", ...jsonBody({ attended: e.target.checked }) }), "Could not update")} />Here</label>
+                  {r.dealId ? (
+                    <a href={`/sales/${r.dealId}`} className="text-slate-700 underline">Lead</a>
+                  ) : (
+                    <button onClick={() => void run(() => api(`/api/events/${id}/registrations/${r.id}/lead`, { method: "POST" }), "Could not make a lead")} className="text-slate-700 underline">Make lead</button>
+                  )}
                   <button onClick={() => void run(() => api(`/api/events/${id}/registrations/${r.id}`, { method: "DELETE" }), "Could not remove")} className="text-rose-700 underline">Remove</button>
                 </span>
               </li>

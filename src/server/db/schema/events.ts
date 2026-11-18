@@ -1,6 +1,7 @@
 import { boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 import { newId } from "@/lib/ids";
 import { ts } from "./_cols";
+import { deals } from "./deals";
 
 export const eventTypeValues = ["SPRINT", "WORKSHOP", "IDEATHON", "BOOTCAMP", "MEETUP"] as const;
 export const eventStatusValues = ["PLANNED", "CONFIRMED", "EXECUTED", "ARCHIVED"] as const;
@@ -57,6 +58,8 @@ export const eventRegistrations = pgTable(
     contact: text("contact"),
     paid: boolean("paid").notNull().default(false),
     attended: boolean("attended").notNull().default(false),
+    /** The lead made from this signup, so one signup becomes one lead. */
+    dealId: text("deal_id").references(() => deals.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("idx_event_regs_event").on(t.eventId)]

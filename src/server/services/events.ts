@@ -14,8 +14,9 @@ import { newId } from "@/lib/ids";
 import { fail, ok } from "@/server/lib/result";
 import { logActivity } from "@/server/services/activity";
 import type { ServiceContext } from "@/server/services/companies";
+import { createDeal } from "@/server/services/deals";
 
-const { events, eventTeam, eventRegistrations } = schema;
+const { events, eventTeam, eventRegistrations, companies } = schema;
 
 function audit(db: Db, ctx: ServiceContext, action: string, id: string) {
   return logActivity(
@@ -214,4 +215,40 @@ export async function removeRegistration(db: Db, ctx: ServiceContext, eventId: s
   if (removed.length === 0) return fail("NOT_FOUND", "Registration not found");
   await audit(db, ctx, "registration_removed", eventId);
   return getEvent(db, ctx, eventId);
+}
+
+/**
+ * Turns an event signup into a lead: a prospect company named after the signup and a deal at "New lead", with
+ * "Event" as its source and the event as the referrer. A signup becomes a lead once; asking again returns the same lead.
+ */
+export async function makeLeadFromRegistration(db: Db, ctx: ServiceContext, eventId: string, regId: string) {
+  const event = await findEvent(db, ctx, eventId);
+  if (!event) return fail("NOT_FOUND", "Event not found");
+  const found = await db
+    .select()
+    .from(eventRegistrations)
+    .where(and(eq(eventRegistrations.id, regId), eq(eventRegistrations.eventId, eventId), eq(eventRegistrations.orgId, ctx.orgId)))
+    .limit(1);
+  const reg = found[0];
+  if (!reg) return fail("NOT_FOUND", "Registration not found");
+  if (reg.dealId) return ok({ dealId: reg.dealId, created: false });
+
+  const deal = await createDeal(db, ctx, {
+    companyName: reg.name,
+    title: `${reg.name} (from ${event.name})`,
+    source: "Event",
+    referrer: event.name,
+  });
+  if (!deal.ok) return deal;
+
+  // Keep how to reach them on the client, since a signup only has one free-text contact field.
+  if (reg.contact) {
+    await db
+      .update(companies)
+      .set({ notes: `Signed up for ${event.name}: ${reg.contact}`, updatedAt: new Date() })
+      .where(and(eq(companies.id, deal.data.companyId), eq(companies.orgId, ctx.orgId)));
+  }
+  await db.update(eventRegistrations).set({ dealId: deal.data.id }).where(eq(eventRegistrations.id, regId));
+  await audit(db, ctx, "registration_made_lead", eventId);
+  return ok({ dealId: deal.data.id, created: true });
 }

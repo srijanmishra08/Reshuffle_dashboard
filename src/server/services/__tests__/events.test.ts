@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb } from "@/test/db";
-import type { Db } from "@/server/db/client";
+import { eq } from "drizzle-orm";
+import { schema, type Db } from "@/server/db/client";
+import { getDeal } from "../deals";
 import {
   addRegistration,
   addRegistrations,
@@ -9,6 +11,7 @@ import {
   deleteEvent,
   getEvent,
   listEvents,
+  makeLeadFromRegistration,
   removeRegistration,
   removeTeamMember,
   updateEvent,
@@ -98,5 +101,32 @@ describe("events", () => {
     expect(must(await listEvents(db, other, {})).length).toBe(0);
     expect((await deleteEvent(db, ctx, e.id)).ok).toBe(true);
     expect((await getEvent(db, ctx, e.id)).ok).toBe(false);
+  });
+});
+
+describe("event signups as leads", () => {
+  it("turns a signup into one lead, keeps how to reach them, and refuses another organisation", async () => {
+    const event = must(await createEvent(db, ctx, { name: "Lead Workshop" }));
+    const withRegs = must(await addRegistrations(db, ctx, event.id, { rows: [{ name: "Signup Person", contact: "signup@example.test" }, { name: "No Contact" }] }));
+    const [first, second] = withRegs.registrations;
+
+    const made = must(await makeLeadFromRegistration(db, ctx, event.id, first.id));
+    expect(made.created).toBe(true);
+    const deal = must(await getDeal(db, ctx, made.dealId));
+    expect(deal).toMatchObject({ stage: "LEAD", source: "Event", referrer: "Lead Workshop", title: "Signup Person (from Lead Workshop)" });
+    expect(deal.company?.name).toBe("Signup Person");
+    const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, deal.companyId));
+    expect(company.notes).toContain("signup@example.test");
+
+    const again = must(await makeLeadFromRegistration(db, ctx, event.id, first.id));
+    expect(again).toEqual({ dealId: made.dealId, created: false });
+    expect(must(await getEvent(db, ctx, event.id)).registrations.find((r) => r.id === first.id)?.dealId).toBe(made.dealId);
+
+    const plain = must(await makeLeadFromRegistration(db, ctx, event.id, second.id));
+    expect(plain.created).toBe(true);
+    expect(plain.dealId).not.toBe(made.dealId);
+
+    expect(await makeLeadFromRegistration(db, other, event.id, first.id)).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    expect(await makeLeadFromRegistration(db, ctx, event.id, "nope")).toMatchObject({ ok: false, code: "NOT_FOUND" });
   });
 });

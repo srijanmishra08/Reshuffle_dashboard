@@ -1,6 +1,6 @@
 # Test Plan
 
-Last checked against the code on 2026-11-18: 43 test files, 973 tests.
+Last checked against the code on 2026-11-18: 44 test files, 1003 tests.
 
 ## How tests run
 
@@ -26,6 +26,9 @@ Last checked against the code on 2026-11-18: 43 test files, 973 tests.
 - A lead's value comes from its modules' prices unless a value is sent.
 - A client with open deals cannot be deleted (archived); after the deals are closed it can.
 - An issued invoice cannot be edited; cancelling needs a credit note; issuing twice does not burn two numbers.
+- A lead can only be owned by an active team member of the organisation; sales nodes are unique by name and hide commission from non-managers; a lead's calls, meetings and forms must belong to its client.
+- A follow-up on an open lead shows in the same due list as a logged next action, and disappears when the lead is closed or its date cleared.
+- A new scope starts from the lead's modules; an event signup becomes one lead only.
 - A FREELANCER, CLIENT or AGENCY sign-in sees only the records linked to it.
 
 ## Gaps

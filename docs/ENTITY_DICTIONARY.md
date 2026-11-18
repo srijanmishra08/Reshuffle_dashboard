@@ -8,7 +8,7 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 |---|---|
 | Identity | `user`, `session`, `account`, `verification` (Better Auth), `allowed_emails` (who may sign in, their role, and the company, freelancer or agency they are linked to), `org_settings`, `number_series` |
 | CRM | `companies`, `contacts`, `interactions`, `meetings`, `attachments` |
-| Sales | `deals`, `deal_stage_history`, `diagnoses`, `deal_modules` (the modules a lead needs), `company_modules` (the modules a client is in), `modules_library` (the SKUs), `scopes`, `scope_items`, `scope_shares` and `scope_acceptances` (public accept link) |
+| Sales | `deals`, `deal_stage_history`, `diagnoses`, `sales_nodes` (who brings leads), `deal_modules` (the modules a lead needs), `company_modules` (the modules a client is in), `modules_library` (the SKUs), `scopes`, `scope_items`, `scope_shares` and `scope_acceptances` (public accept link) |
 | Billing | `invoices`, `invoice_items`, `payments`, `credit_notes`, `work_orders`, `work_order_items`, `letters` |
 | Invoice software link | `ingest_keys` (upload keys, stored hashed), `uploaded_documents` (PDFs sent by the invoice software) |
 | Delivery | `delivery_projects`, `project_milestones`, `project_tasks`, `task_comments`, `freelancers`, `freelancer_assignments`, `payouts`, `agencies`, `agency_freelancers` |
@@ -21,6 +21,8 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 
 ## How the main records link
 
+- A **sales node** is a sales staff member, freelancer, agency or individual who brings leads, with an optional commission rate (basis points of accepted deal value). A lead is credited to one; `source` and `referrer` on the deal keep its kind and name as text.
+- A lead (**deal**) has an owner (`owner_id`, an active team member) and its own history: interactions and meetings carry `deal_id`, as do questionnaires and event registrations that created or relate to it.
 - A client's modules (SKUs) are stored in `company_modules`. They are edited on the client page or set when adding the client in the CRM, and a lead that is added with modules adds them to its client too (they are never removed automatically, so a lost deal does not take them away). The CRM list, board and client page show them and the list filters by module. Verticals no longer exist (table and columns dropped in migration `0025`); modules are how a client's project is classified.
 - A **company** (client) has contacts, interactions, meetings, deals, delivery projects, invoices, work orders and questionnaires.
 - A **deal** belongs to one company. It has stage history, diagnosis answers, the modules it needs (`deal_modules`), and scope versions. A deal's `value_paise` starts as the sum of its modules' `default_price_paise` and can be overridden.
