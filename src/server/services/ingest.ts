@@ -13,7 +13,7 @@ import { recordIssueMessages, uploadedInvoiceDetailsSchema, type RecordIssue } f
 import { createCompany } from "@/server/services/companies";
 import { createInvoice, deleteDraftInvoice, issueInvoice } from "@/server/services/invoices";
 
-const { ingestKeys, uploadedDocuments, invoices, attachments, companies } = schema;
+const { ingestKeys, uploadedDocuments, invoices, attachments, companies, orgSettings } = schema;
 
 export const BUCKET = "invoice-originals";
 export const MAX_PDF_BYTES = 8 * 1024 * 1024;
@@ -135,6 +135,26 @@ async function noteIssue(db: Db, uploadId: string, issue: RecordIssue) {
  * rounding), so a typing slip cannot create a wrong invoice. A client that is not in the dashboard yet is created when
  * `createClient` is set (the upload path sets it: the key is made by an admin and is upload-only).
  */
+/**
+ * The dashboard needs the company's own state to split GST into CGST+SGST or IGST. If Settings has none yet, take it from the
+ * GSTIN printed on the invoice (its first two digits are the state). Only empty fields are filled; nothing already saved is changed.
+ */
+async function fillSettingsFromInvoice(db: Db, orgId: string, d: { issuerName: string; issuerGstin: string; issuerAddress: string }) {
+  const gstin = d.issuerGstin.toUpperCase().replace(/\s+/g, "");
+  if (!VALID_GSTIN.test(gstin)) return;
+  const [row] = await db.select().from(orgSettings).where(eq(orgSettings.orgId, orgId)).limit(1);
+  if (row?.stateCode?.trim()) return;
+  const values = {
+    stateCode: gstin.slice(0, 2),
+    gstin: row?.gstin?.trim() || gstin,
+    legalName: row?.legalName?.trim() || d.issuerName,
+    address: row?.address?.trim() || d.issuerAddress,
+  };
+  if (row) await db.update(orgSettings).set(values).where(eq(orgSettings.orgId, orgId));
+  else await db.insert(orgSettings).values({ orgId, ...values });
+  await logActivity({ action: "settings.filled_from_invoice", module: "settings", entityType: "org_settings", entityId: orgId, metadata: { stateCode: values.stateCode } }, db);
+}
+
 async function recordFromUpload(db: Db, ctx: ServiceContext, upload: UploadRow, opts: { createClient: boolean }) {
   const details = uploadedInvoiceDetailsSchema.safeParse(upload.details);
   if (!details.success) return noteIssue(db, upload.id, "NO_DETAILS");
@@ -151,6 +171,11 @@ async function recordFromUpload(db: Db, ctx: ServiceContext, upload: UploadRow, 
 
   const lines = d.items.map((i) => ({ description: i.description, ratePaise: plainPaise(i.amount) }));
   if (lines.some((l) => l.ratePaise === null)) return noteIssue(db, upload.id, "BAD_ITEMS");
+
+  // Checked before any client is created, so a missing setting cannot leave a client behind with no invoice.
+  await fillSettingsFromInvoice(db, ctx.orgId, d);
+  const [settings] = await db.select({ stateCode: orgSettings.stateCode }).from(orgSettings).where(eq(orgSettings.orgId, ctx.orgId)).limit(1);
+  if (!settings?.stateCode?.trim()) return noteIssue(db, upload.id, "NO_SETTINGS");
 
   const gstin = d.clientGstin.toUpperCase().replace(/\s+/g, "");
   const byName = sql`(lower(${companies.name}) = lower(${d.clientName}) or lower(coalesce(${companies.legalName}, '')) = lower(${d.clientName}))`;

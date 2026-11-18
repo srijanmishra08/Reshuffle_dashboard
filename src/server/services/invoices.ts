@@ -18,7 +18,7 @@ import { logActivity } from "@/server/services/activity";
 import { financialYear, nextNumber } from "@/server/services/numbering";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings, ledgerEntries, attachments } = schema;
+const { invoices, invoiceItems, payments, creditNotes, companies, orgSettings, ledgerEntries, attachments, uploadedDocuments, projectMilestones } = schema;
 
 const DEFAULT_DUE_DAYS = 15;
 const OPEN_STATUSES = ["ISSUED", "PARTIALLY_PAID"] as const;
@@ -258,6 +258,35 @@ export async function deleteDraftInvoice(db: Db, ctx: ServiceContext, id: string
 
   await logActivity(
     { actorId: ctx.userId, action: "invoice.deleted", module: "billing", entityType: "invoice", entityId: id },
+    db
+  );
+  return ok({ id });
+}
+
+/**
+ * Admin clean-up of an invoice that should not exist (a test, usually): removes it and its lines whatever its status.
+ * Refused when money or a credit note is attached, because those are records that must stay. The number is not reused, and the
+ * saved PDF stays in the invoice software's library with its "Record as invoice" button back.
+ */
+export async function deleteInvoicePermanently(db: Db, ctx: ServiceContext, id: string) {
+  const existing = await findInvoice(db, ctx.orgId, id);
+  if (!existing) return fail("NOT_FOUND", "Invoice not found");
+  if (existing.paidPaise > 0) return fail("CONFLICT", "Payments exist on this invoice. Reverse them before deleting it.");
+
+  const paid = await db.select({ id: payments.id }).from(payments).where(eq(payments.invoiceId, id)).limit(1);
+  if (paid.length > 0) return fail("CONFLICT", "Payments exist on this invoice. Reverse them before deleting it.");
+  const credited = await db.select({ id: creditNotes.id }).from(creditNotes).where(eq(creditNotes.invoiceId, id)).limit(1);
+  if (credited.length > 0) return fail("CONFLICT", "A credit note was raised on this invoice, so it has to stay on record.");
+
+  await db.transaction(async (tx: Tx) => {
+    await tx.delete(attachments).where(and(eq(attachments.entityType, "INVOICE"), eq(attachments.entityId, id)));
+    await tx.update(projectMilestones).set({ invoiceId: null }).where(eq(projectMilestones.invoiceId, id));
+    await tx.update(uploadedDocuments).set({ recordNote: null }).where(eq(uploadedDocuments.invoiceId, id));
+    await tx.delete(invoices).where(and(eq(invoices.id, id), eq(invoices.orgId, ctx.orgId)));
+  });
+
+  await logActivity(
+    { actorId: ctx.userId, action: "invoice.deleted_permanently", module: "billing", entityType: "invoice", entityId: id, metadata: { number: existing.number, status: existing.status } },
     db
   );
   return ok({ id });

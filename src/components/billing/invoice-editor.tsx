@@ -20,7 +20,7 @@ const blankLine = (): Line => ({ description: "", sacCode: "", quantity: "1", ra
 const input = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm";
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function InvoiceEditor({ invoiceId }: { invoiceId?: string }) {
+export function InvoiceEditor({ invoiceId, canDelete = false }: { invoiceId?: string; canDelete?: boolean }) {
   const router = useRouter();
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -125,6 +125,13 @@ export function InvoiceEditor({ invoiceId }: { invoiceId?: string }) {
   const discard = () =>
     run(async () => {
       await api(`/api/invoices/${invoiceId}`, { method: "DELETE" });
+      router.push("/invoices");
+    });
+
+  const removeForGood = () =>
+    run(async () => {
+      if (!window.confirm("Delete this invoice for good? Its number is not reused and the saved PDF stays in PDFs from invoice software. This cannot be undone.")) return;
+      await api(`/api/invoices/${invoiceId}/permanent`, { method: "DELETE" });
       router.push("/invoices");
     });
 
@@ -298,6 +305,14 @@ export function InvoiceEditor({ invoiceId }: { invoiceId?: string }) {
             <input className={input} placeholder="Reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
             <button disabled={busy || cancelReason.trim().length < 3} onClick={cancel} className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Cancel invoice</button>
           </div>
+        </section>
+      ) : null}
+
+      {canDelete && invoice && !isDraft && invoice.paidPaise === 0 && !invoice.creditNote ? (
+        <section className="space-y-2 rounded-xl border border-rose-200 p-4">
+          <h2 className="text-sm font-semibold text-rose-800">Delete invoice</h2>
+          <p className="text-xs text-slate-600">For tests and mistakes. Admins only. Not possible once a payment or credit note exists.</p>
+          <button disabled={busy} onClick={removeForGood} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 disabled:opacity-50">Delete invoice</button>
         </section>
       ) : null}
 
