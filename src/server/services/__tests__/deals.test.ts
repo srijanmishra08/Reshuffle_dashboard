@@ -35,11 +35,22 @@ describe("deal stage rules", () => {
 });
 
 describe("deal modules", () => {
-  async function addModule(name: string, orgId = ctx.orgId) {
+  async function addModule(name: string, orgId = ctx.orgId, defaultPricePaise = 0) {
     const id = `mod-${name}`;
-    await db.insert(schema.modulesLibrary).values({ id, orgId, name });
+    await db.insert(schema.modulesLibrary).values({ id, orgId, name, defaultPricePaise });
     return id;
   }
+
+  it("prices a lead from its modules when no value is sent, and keeps a value that is sent", async () => {
+    const pos = await addModule("POS", ctx.orgId, 2_500_000);
+    const stock = await addModule("Stock", ctx.orgId, 1_000_000);
+    const auto = must(await createDeal(db, ctx, { companyName: "Sku Co", title: "Sku", moduleIds: [pos, stock, pos] }));
+    expect(auto.valuePaise).toBe(3_500_000);
+    const typed = must(await createDeal(db, ctx, { companyName: "Sku Co", title: "Negotiated", moduleIds: [pos], valuePaise: 1_800_000 }));
+    expect(typed.valuePaise).toBe(1_800_000);
+    const none = must(await createDeal(db, ctx, { companyName: "Sku Co", title: "No modules" }));
+    expect(none.valuePaise).toBe(0);
+  });
 
   it("attaches chosen modules to a new lead and returns them on the deal and the board list", async () => {
     const billing = await addModule("Billing");

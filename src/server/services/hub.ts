@@ -19,6 +19,8 @@ const {
   deliveryProjects,
   freelancerAssignments,
   legacyFreelancers,
+  dealModules,
+  modulesLibrary,
 } = schema;
 
 export type HubOptions = {
@@ -98,11 +100,21 @@ export async function getClientHub(db: Db, ctx: ServiceContext, companyId: strin
       : Promise.resolve([]),
   ]);
 
+  const dealModuleRows =
+    dealRows.length === 0
+      ? []
+      : await db
+          .select({ dealId: dealModules.dealId, id: modulesLibrary.id, name: modulesLibrary.name, pricePaise: modulesLibrary.defaultPricePaise })
+          .from(dealModules)
+          .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
+          .where(inArray(dealModules.dealId, dealRows.map((d) => d.id)))
+          .orderBy(asc(modulesLibrary.name));
+
   const billed = invoiceRows.filter((i) => i.status !== "DRAFT" && i.status !== "CANCELLED");
   return ok({
     company,
     projects: projects.ok ? projects.data : [],
-    deals: dealRows,
+    deals: dealRows.map((d) => ({ ...d, modules: dealModuleRows.filter((m) => m.dealId === d.id).map(({ id, name, pricePaise }) => ({ id, name, pricePaise })) })),
     scopes: scopeRows,
     invoices: invoiceRows,
     workOrders: workOrderRows,

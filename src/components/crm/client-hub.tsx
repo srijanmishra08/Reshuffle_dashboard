@@ -7,7 +7,7 @@ import { formatINR } from "@/server/lib/money";
 
 type Hub = {
   company: { id: string; name: string };
-  deals: { id: string; title: string; stage: string; valuePaise: number; expectedClose: string | null }[];
+  deals: { id: string; title: string; stage: string; valuePaise: number; expectedClose: string | null; modules: { id: string; name: string; pricePaise: number }[] }[];
   scopes: { id: string; dealId: string; number: string | null; title: string; status: string; version: number; totalPaise: number }[];
   invoices: { id: string; number: string | null; status: string; issueDate: string | null; dueDate: string | null; totalPaise: number; paidPaise: number }[];
   workOrders: { id: string; number: string | null; status: string; issueDate: string | null }[];
@@ -64,12 +64,21 @@ export function ClientHub({ companyId }: { companyId: string }) {
         ) : (
           <ul className="divide-y divide-slate-100 text-sm">
             {hub.deals.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-2 py-2">
-                <Link href={`/sales/${d.id}`} className={link}>{d.title}</Link>
-                <span className="flex items-center gap-2 text-slate-600">
-                  {d.valuePaise ? formatINR(d.valuePaise) : null}
-                  <span className={pill}>{label(d.stage)}</span>
-                </span>
+              <li key={d.id} className="py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/sales/${d.id}`} className={link}>{d.title}</Link>
+                  <span className="flex items-center gap-2 text-slate-600">
+                    {d.valuePaise ? formatINR(d.valuePaise) : null}
+                    <span className={pill}>{label(d.stage)}</span>
+                  </span>
+                </div>
+                {d.modules.length > 0 ? (
+                  <p className="mt-1 flex flex-wrap gap-1">
+                    {d.modules.map((m) => (
+                      <span key={m.id} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{m.name}</span>
+                    ))}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>

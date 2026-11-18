@@ -16,7 +16,7 @@ type DealRow = {
   nextFollowUp: string | null;
   modules: { id: string; name: string }[];
 };
-type ModuleOption = { id: string; name: string; category: string };
+type ModuleOption = { id: string; name: string; category: string; defaultPricePaise: number };
 type StageSummary = { stage: DealStage; count: number; valuePaise: number };
 
 export function DealBoard() {
@@ -28,6 +28,10 @@ export function DealBoard() {
   const [saving, setSaving] = useState(false);
   const [modules, setModules] = useState<ModuleOption[]>([]);
   const [moduleIds, setModuleIds] = useState<string[]>([]);
+  const [valueTouched, setValueTouched] = useState(false);
+  // Modules are SKUs: until the value is typed by hand it is the sum of the chosen modules' prices.
+  const modulesPaise = modules.filter((m) => moduleIds.includes(m.id)).reduce((sum, m) => sum + m.defaultPricePaise, 0);
+  const rupeesShown = valueTouched ? form.rupees : modulesPaise > 0 ? String(modulesPaise / 100) : "";
 
   const load = useCallback(async () => {
     try {
@@ -77,11 +81,12 @@ export function DealBoard() {
           source: form.source,
           referrer: form.referrer,
           moduleIds,
-          valuePaise: Math.round(Number(form.rupees || 0) * 100),
+          valuePaise: Math.round(Number(rupeesShown || 0) * 100),
         }),
       });
       setForm(emptyForm);
       setModuleIds([]);
+      setValueTouched(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add lead");
@@ -124,11 +129,11 @@ export function DealBoard() {
         </label>
         <label className="text-xs text-slate-500">
           Expected value (₹)
-          <input type="number" min="0" value={form.rupees} onChange={(e) => setForm({ ...form, rupees: e.target.value })} className="mt-1 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
+          <input type="number" min="0" value={rupeesShown} onChange={(e) => { setValueTouched(true); setForm({ ...form, rupees: e.target.value }); }} className="mt-1 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
         </label>
         {modules.length > 0 ? (
           <fieldset className="w-full text-xs text-slate-500">
-            <legend className="mb-1">Modules the client needs (optional)</legend>
+            <legend className="mb-1">Modules (SKUs) the client needs: the value fills in from their prices</legend>
             <div className="flex flex-wrap gap-1.5">
               {modules.map((m) => {
                 const on = moduleIds.includes(m.id);
@@ -143,7 +148,7 @@ export function DealBoard() {
                       checked={on}
                       onChange={() => setModuleIds(on ? moduleIds.filter((id) => id !== m.id) : [...moduleIds, m.id])}
                     />
-                    {m.name}
+                    {m.name}{m.defaultPricePaise > 0 ? ` · ${formatINR(m.defaultPricePaise)}` : ""}
                   </label>
                 );
               })}

@@ -38,7 +38,7 @@ type Deal = {
   diagnosis: { bucket: string; totalPain: number; answered: number }[];
   diagnosisEntries: DiagnosisEntry[];
 };
-type ModuleOption = { id: string; name: string; category: string };
+type ModuleOption = { id: string; name: string; category: string; defaultPricePaise: number };
 type ScopeRow = {
   id: string;
   version: number;
@@ -107,6 +107,17 @@ export function DealDetail({ id }: { id: string }) {
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
   }, [load]);
+
+  const modulesPaise = (ids: string[]) => allModules.filter((m) => ids.includes(m.id)).reduce((sum, m) => sum + m.defaultPricePaise, 0);
+
+  /** Modules are SKUs: changing them re-prices the deal, unless the value was set by hand. */
+  function toggleModule(moduleId: string) {
+    const next = moduleIds.includes(moduleId) ? moduleIds.filter((x) => x !== moduleId) : [...moduleIds, moduleId];
+    const current = Math.round(Number(form.rupees || 0) * 100);
+    const wasAuto = current === 0 || current === modulesPaise(moduleIds);
+    setModuleIds(next);
+    if (wasAuto) setForm({ ...form, rupees: String(modulesPaise(next) / 100) });
+  }
 
   async function run(key: string, action: () => Promise<void>, done?: string) {
     setBusy(key);
@@ -329,7 +340,7 @@ export function DealDetail({ id }: { id: string }) {
                 <input value={form.referrer ?? ""} onChange={set("referrer")} className={input} />
               </label>
               <fieldset className={`${label} sm:col-span-2`}>
-                <legend>Modules the client needs</legend>
+                <legend>Modules (SKUs) the client needs: changing them updates the value unless you typed one</legend>
                 {allModules.length === 0 ? (
                   <p className="mt-1 text-slate-400">No modules in the library yet.</p>
                 ) : (
@@ -345,9 +356,9 @@ export function DealDetail({ id }: { id: string }) {
                             type="checkbox"
                             className="sr-only"
                             checked={on}
-                            onChange={() => setModuleIds(on ? moduleIds.filter((x) => x !== m.id) : [...moduleIds, m.id])}
+                            onChange={() => toggleModule(m.id)}
                           />
-                          {m.name}
+                          {m.name}{m.defaultPricePaise > 0 ? ` · ${formatINR(m.defaultPricePaise)}` : ""}
                         </label>
                       );
                     })}

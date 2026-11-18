@@ -35,15 +35,19 @@ function audit(db: Db, ctx: ServiceContext, action: string, id: string, metadata
   );
 }
 
-/** De-duplicated module ids, or null when any of them is not a module of this organisation. */
-async function validModuleIds(db: Db | Tx, orgId: string, ids: string[] | undefined): Promise<string[] | null> {
+/**
+ * De-duplicated module ids and the sum of their library prices, or null when any of them is not a module of this
+ * organisation. Modules are SKUs: a lead's value defaults to the sum of the prices of the modules it needs.
+ */
+async function resolveModules(db: Db | Tx, orgId: string, ids: string[] | undefined): Promise<{ ids: string[]; pricePaise: number } | null> {
   const unique = [...new Set(ids ?? [])];
-  if (unique.length === 0) return [];
+  if (unique.length === 0) return { ids: [], pricePaise: 0 };
   const found = await db
-    .select({ id: modulesLibrary.id })
+    .select({ id: modulesLibrary.id, price: modulesLibrary.defaultPricePaise })
     .from(modulesLibrary)
     .where(and(eq(modulesLibrary.orgId, orgId), inArray(modulesLibrary.id, unique)));
-  return found.length === unique.length ? unique : null;
+  if (found.length !== unique.length) return null;
+  return { ids: unique, pricePaise: found.reduce((sum, m) => sum + m.price, 0) };
 }
 
 export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
@@ -51,8 +55,12 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
   if (!parsed.success) return fail("VALIDATION", "Invalid deal", parsed.error.flatten());
   const input = parsed.data;
 
-  const moduleIds = await validModuleIds(db, ctx.orgId, input.moduleIds);
-  if (!moduleIds) return fail("VALIDATION", "Unknown module");
+  const resolved = await resolveModules(db, ctx.orgId, input.moduleIds);
+  if (!resolved) return fail("VALIDATION", "Unknown module");
+  const moduleIds = resolved.ids;
+  // No value sent: take it from the chosen modules' library prices.
+  const valueSent = typeof raw === "object" && raw !== null && "valuePaise" in raw;
+  const valuePaise = valueSent ? input.valuePaise : resolved.pricePaise;
 
   const id = newId();
   let companyId = input.companyId ?? "";
@@ -95,7 +103,7 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
       orgId: ctx.orgId,
       companyId,
       title: input.title,
-      valuePaise: input.valuePaise,
+      valuePaise,
       verticalId: input.verticalId ?? null,
       engagementModel: input.engagementModel ?? null,
       source: input.source ?? null,
@@ -137,8 +145,9 @@ export async function updateDeal(db: Db, ctx: ServiceContext, id: string, raw: u
   if (!existing) return fail("NOT_FOUND", "Deal not found");
 
   const { moduleIds: requestedModules, ...dealPatch } = patch;
-  const moduleIds = requestedModules === undefined ? undefined : await validModuleIds(db, ctx.orgId, requestedModules);
-  if (moduleIds === null) return fail("VALIDATION", "Unknown module");
+  const resolvedModules = requestedModules === undefined ? undefined : await resolveModules(db, ctx.orgId, requestedModules);
+  if (resolvedModules === null) return fail("VALIDATION", "Unknown module");
+  const moduleIds = resolvedModules?.ids;
 
   const changes: Partial<typeof deals.$inferInsert> = { updatedAt: new Date() };
   for (const key of Object.keys(dealPatch) as (keyof typeof dealPatch)[]) {

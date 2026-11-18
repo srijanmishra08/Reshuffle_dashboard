@@ -33,7 +33,7 @@ Stored stage keys are unchanged; the labels follow how Reshuffle sells:
 | Client accepts; project starts ("Convert to project") | Accepted | `WON` |
 | Dropped (reason required) | Lost | `LOST` |
 
-Anyone on staff can add a lead by typing a new name; the company is created as a prospect, or reused when the name already exists. The lead records which sales node found it, who referred it, and which library modules the client needs.
+Anyone on staff can add a lead by typing a new name; the company is created as a prospect, or reused when the name already exists. The lead records which sales node found it, who referred it, and which library modules the client needs. Modules are SKUs: a lead's value fills in from the sum of the chosen modules' library prices (you can still type a different value, for example after negotiating), and the modules show on the board card, the deal page and the client page.
 
 ## Stack
 

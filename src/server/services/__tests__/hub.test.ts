@@ -60,6 +60,15 @@ beforeAll(async () => {
 afterAll(() => cleanup());
 
 describe("client hub", () => {
+  it("lists the modules (SKUs) each deal needs", async () => {
+    await db.insert(schema.modulesLibrary).values({ id: "hub-mod-1", orgId: "default", name: "Billing SKU", defaultPricePaise: 1_200_000 });
+    const deal = must(await createDeal(db, ctx, { companyId: otherCompanyId, title: "Sku deal", moduleIds: ["hub-mod-1"] }));
+    const hub = must(await getClientHub(db, ctx, otherCompanyId, { includeMoney: false }));
+    const row = hub.deals.find((d) => d.id === deal.id);
+    expect(row?.modules).toEqual([{ id: "hub-mod-1", name: "Billing SKU", pricePaise: 1_200_000 }]);
+    expect(row?.valuePaise).toBe(1_200_000);
+  });
+
   it("gathers everything for one client, and nothing from another", async () => {
     const hub = must(await getClientHub(db, ctx, companyId, { includeMoney: true, includeAccess: true }));
     expect(hub.company.name).toBe("Fake Traders");
