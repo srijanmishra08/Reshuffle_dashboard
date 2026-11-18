@@ -13,6 +13,7 @@ import {
   ingestDocument,
   listIngestKeys,
   listUploadedDocuments,
+  nextInvoiceNumber,
   parseAmountPaise,
   parseDocumentDate,
   recordUploadedInvoice,
@@ -332,5 +333,38 @@ describe("recording an uploaded invoice in the dashboard", () => {
     const res = must(await send(12, { amount: "₹5,000.00" }));
     expect((await recordUploadedInvoice(db, other, res.id, { createClient: true })).ok).toBe(false);
     expect((await recordUploadedInvoice(db, ctx, "missing", {})).ok).toBe(false);
+  });
+});
+
+describe("the next invoice number", () => {
+  const ask = (year: number, month: number, org = "default", prefix?: string) => nextInvoiceNumber(db, org, { prefix, year, month });
+  const upload = (number: string, docType: "INVOICE" | "WORK_ORDER" = "INVOICE", orgId = "default") =>
+    db.insert(schema.uploadedDocuments).values({ orgId, docType, number, filename: "n.pdf", blobKey: `k-${number}-${orgId}`, sizeBytes: 1, sha256: `nn-${number}-${docType}-${orgId}` });
+
+  it("starts at 01 for a month with no invoices", async () => {
+    expect(must(await ask(2041, 2))).toEqual({ number: "RESHUFFLE/2041/02/01" });
+  });
+
+  it("goes one past the highest number, counting dashboard invoices and saved PDFs, per month", async () => {
+    const company = must(await createCompany(db, ctx, { name: "Numbering Client" }));
+    await db.insert(schema.invoices).values({ orgId: "default", companyId: company.id, status: "ISSUED", number: "RESHUFFLE/2042/05/03" });
+    await upload("RESHUFFLE/2042/05/07");
+    await upload("reshuffle/2042/05/9"); // case and padding do not matter
+    await upload("RESHUFFLE/2042/05/11 (full project total)"); // not in the pattern: ignored
+    await upload("RESHUFFLE/2042/05/99", "WORK_ORDER"); // only invoices count
+    await upload("RESHUFFLE/2042/06/20");
+    await upload("RESHUFFLE/2042/05/50", "INVOICE", "other"); // another organisation
+    expect(must(await ask(2042, 5)).number).toBe("RESHUFFLE/2042/05/10");
+    expect(must(await ask(2042, 6)).number).toBe("RESHUFFLE/2042/06/21");
+    expect(must(await ask(2042, 7)).number).toBe("RESHUFFLE/2042/07/01");
+  });
+
+  it("keeps a different prefix apart and rejects bad input", async () => {
+    await upload("OTHER/2043/01/04");
+    expect(must(await ask(2043, 1)).number).toBe("RESHUFFLE/2043/01/01");
+    expect(must(await ask(2043, 1, "default", "OTHER")).number).toBe("OTHER/2043/01/05");
+    expect((await ask(2043, 0)).ok).toBe(false);
+    expect((await ask(1999, 1)).ok).toBe(false);
+    expect((await ask(2043, 1, "default", "a b")).ok).toBe(false);
   });
 });
