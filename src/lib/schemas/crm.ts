@@ -86,6 +86,11 @@ export const interactionPatchSchema = z.object({
   done: z.boolean(),
 });
 
+/** Body for tying a logged touch or meeting to a lead (or untying it with `null`). */
+export const dealLinkSchema = z.object({
+  dealId: z.string().trim().min(1).max(100).nullable(),
+});
+
 export const meetingInputSchema = z.object({
   /** The lead (deal) this meeting is about, when it belongs to one. */
   dealId: text(100),

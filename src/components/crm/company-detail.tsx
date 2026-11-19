@@ -36,6 +36,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [leads, setLeads] = useState<{ id: string; title: string }[]>([]);
   const [moduleOptions, setModuleOptions] = useState<{ id: string; name: string }[]>([]);
   const [message, setMessage] = useState("Loading...");
   const [loaded, setLoaded] = useState(false);
@@ -47,20 +48,22 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
-    const [c, ct, it, mt] = await Promise.all([
+    const [c, ct, it, mt, ds] = await Promise.all([
       api<Company>(base),
       api<Contact[]>(`${base}/contacts`),
       api<Interaction[]>(`${base}/interactions`),
       api<Meeting[]>(`${base}/meetings`),
+      api<{ id: string; title: string }[]>(`/api/deals?companyId=${companyId}`).catch(() => []),
     ]);
     if (seq !== loadSeq.current) return;
     setCompany(c);
     setContacts(ct);
     setInteractions(it);
     setMeetings(mt);
+    setLeads(ds);
     setLoaded(true);
     setMessage("");
-  }, [base]);
+  }, [base, companyId]);
 
   useEffect(() => {
     void api<{ id: string; name: string; active: boolean }[]>("/api/modules")
@@ -141,6 +144,12 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
                       {entry.i.dealId ? <> · <Link href={`/sales/${entry.i.dealId}`} className="underline">Lead</Link></> : null}
                     </p>
                     <p className="text-slate-900">{entry.i.summary}</p>
+                    {!entry.i.dealId && leads.length > 0 ? (
+                      <LinkToLead
+                        leads={leads}
+                        onPick={(dealId) => void run(() => api(`${base}/interactions/${entry.i.id}/lead`, { method: "PATCH", ...jsonBody({ dealId }) }), "Linked to the lead.")}
+                      />
+                    ) : null}
                     {entry.i.nextAction ? (
                       <p className="text-xs text-slate-500">
                         Next: {entry.i.nextAction} ({formatDate(entry.i.nextActionAt)}
@@ -155,6 +164,12 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
                       {entry.m.dealId ? <> · <Link href={`/sales/${entry.m.dealId}`} className="underline">Lead</Link></> : null}
                     </p>
                     <p className="text-slate-900">{entry.m.title}</p>
+                    {!entry.m.dealId && leads.length > 0 ? (
+                      <LinkToLead
+                        leads={leads}
+                        onPick={(dealId) => void run(() => api(`${base}/meetings/${entry.m.id}/lead`, { method: "PATCH", ...jsonBody({ dealId }) }), "Linked to the lead.")}
+                      />
+                    ) : null}
                     {entry.m.notes ? <p className="text-xs text-slate-500">{entry.m.notes}</p> : null}
                   </li>
                 )
@@ -204,6 +219,22 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function LinkToLead({ leads, onPick }: { leads: { id: string; title: string }[]; onPick: (dealId: string) => void }) {
+  return (
+    <select
+      aria-label="Link to a lead"
+      value=""
+      onChange={(e) => e.target.value && onPick(e.target.value)}
+      className="mt-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
+    >
+      <option value="">Link to a lead…</option>
+      {leads.map((l) => (
+        <option key={l.id} value={l.id}>{l.title}</option>
+      ))}
+    </select>
   );
 }
 
