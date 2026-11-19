@@ -192,7 +192,7 @@ All tables have `id` (text, cuid2), `created_at`, `updated_at`, `created_by`. So
 - **content_items**: account_id, title, script, platform, publish_on, status (`IDEA | DRAFT | SCHEDULED | POSTED`). Migrates the current `social_entries` table.
 - **events**: name, type (`SPRINT | WORKSHOP | IDEATHON | BOOTCAMP | MEETUP`), date, venue, status, capacity, ticket_price_paise, partner, notes. Plus **event_team** (person/role) and **event_registrations** (name, contact, paid, attended).
 - **goals**: period (month), title, team, priority, status, owner, due.
-- **docs**: title, type (`SOP | PLAYBOOK | DECISION | NOTE | RESOURCE`), body (Markdown), status (`DRAFT | IN_REVIEW | PUBLISHED | DEPRECATED`), linked entity. Decision log entries keep their `DL-xxx` code.
+- **docs**: title, type (`SOP | PLAYBOOK | DECISION | NOTE | RESOURCE`), body (Markdown), status (`DRAFT | IN_REVIEW | PUBLISHED | DEPRECATED`), linked client and lead (built; other entities and version history are not). Decision log entries keep their `DL-xxx` code.
 - **assets**: name, type (photo/icon/illustration/video), url/blob_key, status, project_id.
 
 ### Cross-cutting

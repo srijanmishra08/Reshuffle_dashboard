@@ -113,7 +113,7 @@ export const departments: Department[] = [
       { title: "People", href: "/people", description: "Team records and salary slips (admin and manager).", icon: Contact },
       { title: "Letters", href: "/letters", description: "Numbered letters, offer letters and service agreements.", icon: Mail },
       { title: "Goals", href: "/goals", description: "Monthly goals by team.", icon: Target },
-      { title: "Documentation", href: "/docs", description: "SOPs, decision logs and versioned docs.", icon: FileText },
+      { title: "Documentation", href: "/docs", description: "SOPs, playbooks and decision logs. Link a doc to a client or lead.", icon: FileText },
       { title: "Access", href: "/access", description: "Who can sign in: team, clients, partner agencies and freelancers (admin).", icon: KeyRound },
       { title: "Settings", href: "/settings", description: "Organisation, tax and signatory details (admin).", icon: Settings },
     ],

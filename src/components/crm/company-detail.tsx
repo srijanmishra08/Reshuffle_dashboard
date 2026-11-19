@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkedDocs } from "@/components/docs/linked-docs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -118,6 +119,10 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
       <Card title="Projects">
         <ProjectProgress companyId={companyId} />
+      </Card>
+
+      <Card title="Documents">
+        <LinkedDocs companyId={companyId} />
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">

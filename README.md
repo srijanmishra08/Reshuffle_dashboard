@@ -15,7 +15,7 @@ The side menu is split into departments (`src/lib/navigation.ts`):
 | Finance | Finance (ledger, receivables, monthly, GST, plan), Invoices (with the PDFs from the invoice software), Work orders |
 | Marketing | Marketing, Social media, Events |
 | Delivery | Projects (milestones and task boards), App development, Freelancers (assignments, payouts) |
-| People & Admin | People and salary slips, Letters, Goals, Documentation, Access, Settings |
+| People & Admin | People and salary slips, Letters, Goals, Documentation (SOPs, playbooks, decisions; a doc can be linked to a client or lead and shows on their page), Access, Settings |
 
 Outside people sign in to their own portal: clients at `/portal`, freelancers at `/me`, partner agencies at `/agency`. Clients can also open a shared scope or questionnaire through a public link (`/p/[token]`, `/p/form/[token]`).
 

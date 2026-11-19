@@ -55,7 +55,8 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 | Goal | status `TODO`, `IN_PROGRESS`, `DONE`, `DROPPED`; priority `LOW`, `MEDIUM`, `HIGH` |
 | Event | type `SPRINT`, `WORKSHOP`, `IDEATHON`, `BOOTCAMP`, `MEETUP`; status `PLANNED`, `CONFIRMED`, `EXECUTED`, `ARCHIVED` |
 | Content item | `IDEA`, `DRAFT`, `SCHEDULED`, `PUBLISHED` |
-| Doc | `SOP`, `PLAYBOOK`, `DECISION`, `NOTE`, `RESOURCE` |
+| Doc type | `SOP`, `PLAYBOOK`, `DECISION`, `NOTE`, `RESOURCE` |
+| Doc status | `DRAFT`, `IN_REVIEW`, `PUBLISHED`, `DEPRECATED` (a doc may also link to one client and one lead) |
 | Questionnaire | `OPEN`, `CLOSED` |
 | Uploaded document | `INVOICE`, `WORK_ORDER` |
 | Diagnosis bucket | `REVENUE`, `MARKETING`, `OPERATIONS`, `CUSTOMER_EXPERIENCE`, `MANAGEMENT` (answers are recorded across 8 levels) |

@@ -154,7 +154,7 @@ export async function globalSearch(db: Db, ctx: ServiceContext, rawQuery: unknow
       href: `/invoices/${r.id}`,
     })),
     ...projectRows.map((r) => ({ type: "Project", id: r.id, title: r.name, subtitle: r.status, href: `/projects/${r.id}` })),
-    ...docRows.map((r) => ({ type: "Doc", id: r.id, title: r.title, subtitle: r.type, href: "/docs" })),
+    ...docRows.map((r) => ({ type: "Doc", id: r.id, title: r.title, subtitle: r.type, href: `/docs?open=${r.id}` })),
     ...freelancerRows.map((r) => ({
       type: "Freelancer",
       id: r.id,

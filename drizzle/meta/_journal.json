@@ -211,6 +211,13 @@
       "when": 1795023192996,
       "tag": "0029_event_registration_lead",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795077637246,
+      "tag": "0030_opposite_taskmaster",
+      "breakpoints": true
     }
   ]
 }

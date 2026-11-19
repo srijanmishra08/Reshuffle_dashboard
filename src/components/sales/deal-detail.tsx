@@ -7,6 +7,7 @@ import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { useStaff } from "@/lib/use-staff";
 import { useSalesNodes } from "@/lib/use-sales-nodes";
+import { LinkedDocs } from "@/components/docs/linked-docs";
 import { DealActivity } from "@/components/sales/deal-activity";
 import {
   canTransitionDeal,
@@ -68,7 +69,7 @@ export function DealDetail({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
-  const [tab, setTab] = useState<"details" | "activity" | "diagnosis" | "scopes">("details");
+  const [tab, setTab] = useState<"details" | "activity" | "diagnosis" | "scopes" | "docs">("details");
   const [form, setForm] = useState<Record<string, string>>({});
   const { staff } = useStaff();
   const { nodes } = useSalesNodes();
@@ -295,7 +296,7 @@ export function DealDetail({ id }: { id: string }) {
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
       <div className="flex gap-1 border-b border-slate-200">
-        {(["details", "activity", "diagnosis", "scopes"] as const).map((t) => (
+        {(["details", "activity", "diagnosis", "scopes", "docs"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -528,6 +529,12 @@ export function DealDetail({ id }: { id: string }) {
             Save diagnosis
           </button>
         </div>
+      ) : null}
+
+      {tab === "docs" && deal.company ? (
+        <section className={card}>
+          <LinkedDocs companyId={deal.company.id} dealId={id} />
+        </section>
       ) : null}
 
       {tab === "activity" && deal.company ? <DealActivity dealId={id} companyId={deal.company.id} /> : null}
