@@ -30,6 +30,8 @@ export function MailComposer({ kind, companyId, contactId, dealId, defaultTo = "
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState("");
+  const [remember, setRemember] = useState(true);
+  const [rememberName, setRememberName] = useState("");
   const key = useRef(crypto.randomUUID());
   const listId = useId();
 
@@ -53,12 +55,20 @@ export function MailComposer({ kind, companyId, contactId, dealId, defaultTo = "
     setError("");
     try {
       const matched = contacts.find((c) => c.email?.toLowerCase() === to.trim().toLowerCase());
+      const address = to.trim().toLowerCase();
       const result = await api<{ status: string; lastError: string | null }>("/api/mail/send", {
         method: "POST",
         ...jsonBody({ kind, to, subject, body, companyId, dealId: dealId ?? undefined, contactId: contactId ?? matched?.id, idempotencyKey: key.current }),
       });
       if (result.status === "SENT") {
         setSent(`Sent to ${to}`);
+        if (!matched && remember) {
+          // Keep the address on the client so the next email is pre-filled. A failure here must not hide the send.
+          await api(`/api/companies/${companyId}/contacts`, {
+            method: "POST",
+            ...jsonBody({ name: rememberName.trim() || address.split("@")[0], email: address }),
+          }).catch(() => undefined);
+        }
         onSent?.();
       } else {
         setError(`Not sent yet (${result.lastError ?? "will retry"}). It stays in the outbox and is retried automatically.`);
@@ -89,6 +99,22 @@ export function MailComposer({ kind, companyId, contactId, dealId, defaultTo = "
         Message
         <textarea required rows={5} value={body} onChange={(e) => setBody(e.target.value)} className={field} />
       </label>
+      {!sent && to.includes("@") && !contacts.some((c) => c.email?.toLowerCase() === to.trim().toLowerCase()) ? (
+        <div className="space-y-1 text-xs text-slate-600">
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            Save this address as a contact on the client
+          </label>
+          {remember ? (
+            <input
+              value={rememberName}
+              onChange={(e) => setRememberName(e.target.value)}
+              placeholder="Contact name (optional)"
+              className="block w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+            />
+          ) : null}
+        </div>
+      ) : null}
       {error ? <p className="text-xs text-rose-600" role="alert">{error}</p> : null}
       {sent ? <p className="text-xs text-emerald-700">{sent}. It is logged on the client.</p> : null}
       <div className="flex gap-2">

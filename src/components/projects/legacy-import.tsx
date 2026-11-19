@@ -83,7 +83,7 @@ export function LegacyImport({ kind }: { kind: "tasks" | "app-dev" | "outreach" 
       <p className="text-sm text-slate-600">
         {moveToProject
           ? `${cards.length} card${cards.length === 1 ? "" : "s"} on the old ${kind === "tasks" ? "task" : "app development"} board are not linked to any client. Move each onto a project so it appears on that client's page.`
-          : `${cards.length} outreach card${cards.length === 1 ? "" : "s"} can become a client and a deal on the Sales board.`}
+          : `${cards.length} outreach card${cards.length === 1 ? "" : "s"} can become a client and a lead on Outreach.`}
       </p>
       {error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : null}
       {notice ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p> : null}

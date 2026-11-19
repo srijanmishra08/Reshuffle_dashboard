@@ -16,11 +16,24 @@ const optionalText = (max: number) =>
     .nullable()
     .optional();
 
+const optionalEmail = z
+  .string()
+  .trim()
+  .max(200)
+  .refine((v) => v === "" || z.email().safeParse(v).success, "Enter a valid contact email")
+  .transform((v) => (v === "" ? null : v.toLowerCase()))
+  .nullable()
+  .optional();
+
 const dealFields = z.object({
   /** An existing company. Omit it and send `companyName` to add a brand-new lead. */
   companyId: z.string().trim().min(1).max(100).optional(),
   /** A new lead's name; reuses the company when one with this name already exists. */
   companyName: z.string().trim().min(1, "Lead name is required").max(200).optional(),
+  /** Who to reach at a new lead. Saved as a contact on the client, so email buttons know where to write. */
+  contactName: optionalText(200),
+  contactEmail: optionalEmail,
+  contactPhone: optionalText(30),
   title: z.string().trim().min(1, "Title is required").max(200),
   valuePaise: z.number().int().min(0).max(100_000_000_000_00).default(0),
   engagementModel: optionalText(100),
@@ -44,7 +57,9 @@ export const dealInputSchema = dealFields.refine((v) => Boolean(v.companyId || v
 });
 export type DealInput = z.infer<typeof dealInputSchema>;
 
-export const dealPatchSchema = dealFields.omit({ companyId: true, companyName: true }).partial();
+export const dealPatchSchema = dealFields
+  .omit({ companyId: true, companyName: true, contactName: true, contactEmail: true, contactPhone: true })
+  .partial();
 
 export const dealListQuerySchema = z.object({
   stage: z.enum(dealStageValues).optional(),
@@ -52,7 +67,7 @@ export const dealListQuerySchema = z.object({
   ownerId: z.string().optional(),
   temperature: z.enum(temperatureValues).optional(),
   companyId: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(200),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
   offset: z.coerce.number().int().min(0).default(0),
 });
 

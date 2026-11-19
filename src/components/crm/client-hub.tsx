@@ -58,9 +58,9 @@ export function ClientHub({ companyId }: { companyId: string }) {
 
   return (
     <div className="space-y-4">
-      <Card title="Deals" action={<Link href="/sales" className="text-xs text-slate-500 underline">Sales board</Link>}>
+      <Card title="Deals" action={<Link href="/outreach" className="text-xs text-slate-500 underline">Outreach</Link>}>
         {hub.deals.length === 0 ? (
-          empty("No deals yet. Start one from the Sales board.")
+          empty("No deals yet. Record one on Record sales.")
         ) : (
           <ul className="divide-y divide-slate-100 text-sm">
             {hub.deals.map((d) => (

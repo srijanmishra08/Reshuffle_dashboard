@@ -116,7 +116,7 @@ export function OverviewDashboard() {
         <section className={card}>
           <div className="flex items-center justify-between">
             <h3 className={heading}>Pipeline by stage</h3>
-            <Link href="/sales" className="text-xs text-slate-600 underline">Open sales</Link>
+            <Link href="/outreach" className="text-xs text-slate-600 underline">Open outreach</Link>
           </div>
           <ul className="mt-3 space-y-2">
             {data.pipeline.stages.map((s) => (

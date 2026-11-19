@@ -1,10 +1,10 @@
 import { DashboardShell } from "@/components/dashboard-shell";
-import { DealBoard } from "@/components/sales/deal-board";
+import { LeadForm } from "@/components/sales/lead-form";
 
 export default function Page() {
   return (
-    <DashboardShell title="Sales" subtitle="Leads from first contact to an accepted project, with value per stage.">
-      <DealBoard />
+    <DashboardShell title="Record sales" subtitle="Add a new lead and how to reach them. Follow it up on Outreach.">
+      <LeadForm />
     </DashboardShell>
   );
 }

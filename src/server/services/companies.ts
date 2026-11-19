@@ -224,7 +224,7 @@ export async function archiveCompany(db: Db, ctx: ServiceContext, id: string) {
     .from(deals)
     .where(and(eq(deals.companyId, id), eq(deals.orgId, ctx.orgId), notInArray(deals.stage, ["WON", "LOST"])));
   if (Number(open[0]?.n ?? 0) > 0) {
-    return fail("CONFLICT", "This client has open deals. Move them to Accepted or Lost on the Sales board first.");
+    return fail("CONFLICT", "This client has open deals. Move them to Accepted or Lost on Outreach first.");
   }
 
   const now = new Date();

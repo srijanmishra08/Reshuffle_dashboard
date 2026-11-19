@@ -17,7 +17,7 @@ import { salesNodeLabels } from "@/server/services/sales-nodes";
 import { canTransitionDeal, dealStageValues, type DealStage } from "@/server/models/deals";
 import type { ServiceContext } from "@/server/services/companies";
 
-const { deals, dealStageHistory, diagnoses, companies, dealModules, modulesLibrary, user } = schema;
+const { deals, dealStageHistory, diagnoses, companies, contacts, dealModules, modulesLibrary, user } = schema;
 
 type DealRow = typeof deals.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -88,6 +88,26 @@ export async function createDeal(db: Db, ctx: ServiceContext, raw: unknown) {
         referrer: input.referrer ?? node?.referrer ?? null,
         createdBy: ctx.userId,
       });
+    }
+    if (input.contactName || input.contactEmail || input.contactPhone) {
+      // A repeat lead for an existing client must not add the same address twice.
+      const duplicate = input.contactEmail
+        ? await tx
+            .select({ id: contacts.id })
+            .from(contacts)
+            .where(and(eq(contacts.companyId, companyId), isNull(contacts.archivedAt), sql`lower(${contacts.email}) = ${input.contactEmail}`))
+            .limit(1)
+        : [];
+      if (duplicate.length === 0) {
+        await tx.insert(contacts).values({
+          orgId: ctx.orgId,
+          companyId,
+          name: input.contactName ?? "Primary contact",
+          phone: input.contactPhone ?? null,
+          email: input.contactEmail ?? null,
+          createdBy: ctx.userId,
+        });
+      }
     }
     await tx.insert(deals).values({
       id,
@@ -212,7 +232,8 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
   if (!parsed.success) return fail("VALIDATION", "Invalid filters", parsed.error.flatten());
   const q = parsed.data;
 
-  const conditions = [eq(deals.orgId, ctx.orgId)];
+  // Leads of a deleted (archived) client are hidden here as they are in Clients, so the lists agree.
+  const conditions = [eq(deals.orgId, ctx.orgId), isNull(companies.archivedAt)];
   if (q.stage) conditions.push(eq(deals.stage, q.stage));
   if (q.source) conditions.push(eq(deals.source, q.source));
   if (q.ownerId) conditions.push(eq(deals.ownerId, q.ownerId));
@@ -245,6 +266,22 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
     .limit(q.limit)
     .offset(q.offset);
 
+  const companyIds = [...new Set(rows.map((r) => r.companyId))];
+  const people =
+    companyIds.length === 0
+      ? []
+      : await db
+          .select({ companyId: contacts.companyId, name: contacts.name, email: contacts.email, phone: contacts.phone })
+          .from(contacts)
+          .where(and(inArray(contacts.companyId, companyIds), isNull(contacts.archivedAt)))
+          .orderBy(asc(contacts.createdAt));
+  // The person to write to: the first contact that has an email, otherwise the first contact.
+  const reach = (companyId: string) => {
+    const mine = people.filter((p) => p.companyId === companyId);
+    const pick = mine.find((p) => p.email) ?? mine[0];
+    return { contactName: pick?.name ?? null, contactEmail: pick?.email ?? null, contactPhone: pick?.phone ?? null };
+  };
+
   const attached =
     rows.length === 0
       ? []
@@ -254,7 +291,7 @@ export async function listDeals(db: Db, ctx: ServiceContext, rawQuery: unknown =
           .innerJoin(modulesLibrary, eq(modulesLibrary.id, dealModules.moduleId))
           .where(inArray(dealModules.dealId, rows.map((r) => r.id)))
           .orderBy(asc(modulesLibrary.name));
-  return ok(rows.map((r) => ({ ...r, modules: attached.filter((m) => m.dealId === r.id).map(({ id, name }) => ({ id, name })) })));
+  return ok(rows.map((r) => ({ ...r, ...reach(r.companyId), modules: attached.filter((m) => m.dealId === r.id).map(({ id, name }) => ({ id, name })) })));
 }
 
 /** Count and total value per stage, over the same rows the board shows. */
@@ -266,7 +303,8 @@ export async function pipelineSummary(db: Db, ctx: ServiceContext) {
       valuePaise: sql<number>`coalesce(sum(${deals.valuePaise}), 0)`,
     })
     .from(deals)
-    .where(eq(deals.orgId, ctx.orgId))
+    .innerJoin(companies, eq(companies.id, deals.companyId))
+    .where(and(eq(deals.orgId, ctx.orgId), isNull(companies.archivedAt)))
     .groupBy(deals.stage);
 
   const byStage = new Map(rows.map((r) => [r.stage, r]));

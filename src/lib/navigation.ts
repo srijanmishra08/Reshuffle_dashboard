@@ -54,8 +54,8 @@ export const departments: Department[] = [
     description: "Turn leads into signed work: pipeline, diagnosis, scopes and the module library.",
     icon: Handshake,
     items: [
-      { title: "Sales board", href: "/sales", description: "Deals from lead to won, with diagnosis and scopes.", icon: Handshake },
-      { title: "Outreach", href: "/outreach", description: "Open leads sorted by follow-up date, from the Sales board.", icon: Send },
+      { title: "Record sales", href: "/sales", description: "Add a new lead and how to reach them.", icon: Handshake },
+      { title: "Outreach", href: "/outreach", description: "Every lead and where it stands, from first contact to won or lost.", icon: Send },
       { title: "Sales nodes", href: "/sales/nodes", description: "Who brings leads, how many each brought, and referral commission.", icon: Network },
       { title: "Module library", href: "/settings/modules", description: "Reusable modules and prices used to build scopes.", icon: Boxes },
     ],

@@ -103,7 +103,7 @@ export const companyListQuerySchema = z.object({
   /** Only clients with an open deal that includes this module (SKU). */
   moduleId: z.string().trim().max(100).optional(),
   ownerId: z.string().trim().max(100).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(200),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
   offset: z.coerce.number().int().min(0).default(0),
 });
 export type CompanyListQuery = z.infer<typeof companyListQuerySchema>;

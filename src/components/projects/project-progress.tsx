@@ -267,7 +267,7 @@ export function ProjectProgress({ companyId, groupByClient = false }: { companyI
             {rows?.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
-                  {companyId ? "No projects for this client yet. Start one with New project." : "No projects yet. Start one with New project, or convert a won deal on the Sales board."}
+                  {companyId ? "No projects for this client yet. Start one with New project." : "No projects yet. Start one with New project, or convert a won deal from its lead page."}
                 </td>
               </tr>
             ) : null}
