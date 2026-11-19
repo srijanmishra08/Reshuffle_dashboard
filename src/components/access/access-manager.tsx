@@ -96,7 +96,7 @@ export function AccessManager() {
       <section className={card}>
         <h3 className="text-sm font-semibold text-slate-800">Give someone access</h3>
         <p className="mt-1 text-xs text-slate-500">
-          They sign in with the Google account for this email. There is no invitation email yet, so send them the sign-in link yourself.
+          They sign in with the Google account for this email. Use &ldquo;Send invite&rdquo; in the list below to email them the sign-in link (needs Gmail connected in Settings).
         </p>
         <form onSubmit={grant} className="mt-3 grid items-end gap-3 md:grid-cols-4">
           <label className={label}>
@@ -192,6 +192,18 @@ export function AccessManager() {
                   <td className={th}>{r.linkedTo ?? "—"}</td>
                   <td className={th}>{r.hasSignedIn ? "Yes" : "Not yet"}</td>
                   <td className={`${th} text-right`}>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void run(
+                          () => api("/api/mail/invite", { method: "POST", ...jsonBody({ email: r.email, idempotencyKey: crypto.randomUUID() }) }),
+                          `Invitation emailed to ${r.email}.`
+                        )
+                      }
+                      className="mr-3 text-xs text-slate-700 underline disabled:opacity-50"
+                    >
+                      Send invite
+                    </button>
                     <button
                       disabled={busy}
                       onClick={() => {

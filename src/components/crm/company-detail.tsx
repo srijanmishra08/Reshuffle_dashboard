@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { ClientHub } from "@/components/crm/client-hub";
+import { MailComposer } from "@/components/mail/mail-composer";
 import { ProjectProgress } from "@/components/projects/project-progress";
 import {
   formatDate,
@@ -197,6 +198,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
               contacts={contacts}
               onToggle={(contact, field) => run(() => api(`${base}/contacts/${contact.id}`, { method: "PATCH", ...jsonBody({ [field]: !contact[field] }) }))}
               onArchive={(contact) => run(() => api(`${base}/contacts/${contact.id}`, { method: "DELETE" }), "Contact removed.")}
+              onEmailed={() => void run(async () => undefined, "Email sent and logged on this client.")}
             />
             <ContactForm onSubmit={(body) => run(() => api(`${base}/contacts`, { method: "POST", ...jsonBody(body) }), "Contact added.")} />
           </Card>
@@ -395,11 +397,14 @@ function ContactsList({
   contacts,
   onToggle,
   onArchive,
+  onEmailed,
 }: {
   contacts: Contact[];
   onToggle: (contact: Contact, field: "onboarded" | "approved") => Promise<void>;
   onArchive: (contact: Contact) => Promise<void>;
+  onEmailed: () => void;
 }) {
+  const [emailing, setEmailing] = useState("");
   if (contacts.length === 0) {
     return <p className="text-sm text-slate-500">No contacts yet.</p>;
   }
@@ -414,8 +419,24 @@ function ContactsList({
               <p className="text-xs text-slate-500">{[contact.phone, contact.email].filter(Boolean).join(" · ")}</p>
               {contact.whatsappRole ? <p className="text-xs text-slate-500">WhatsApp: {contact.whatsappRole}</p> : null}
             </div>
-            <button type="button" onClick={() => void onArchive(contact)} className="text-xs text-slate-400 hover:text-red-600">Remove</button>
+            <div className="flex gap-3">
+              {contact.email ? (
+                <button type="button" onClick={() => setEmailing(emailing === contact.id ? "" : contact.id)} className="text-xs text-slate-600 hover:text-slate-900">Email</button>
+              ) : null}
+              <button type="button" onClick={() => void onArchive(contact)} className="text-xs text-slate-400 hover:text-red-600">Remove</button>
+            </div>
           </div>
+          {emailing === contact.id && contact.email ? (
+            <MailComposer
+              kind="FOLLOWUP"
+              companyId={contact.companyId}
+              contactId={contact.id}
+              defaultTo={contact.email}
+              defaultBody={`Hello ${contact.name},\n\n`}
+              onClose={() => setEmailing("")}
+              onSent={onEmailed}
+            />
+          ) : null}
           <div className="mt-1 flex gap-3 text-xs text-slate-600">
             <label className="flex items-center gap-1"><input type="checkbox" checked={contact.onboarded} onChange={() => void onToggle(contact, "onboarded")} /> Onboarded</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={contact.approved} onChange={() => void onToggle(contact, "approved")} /> Approved</label>

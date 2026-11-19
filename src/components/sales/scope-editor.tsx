@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { engagementModels } from "@/lib/diagnosis-questions";
@@ -82,6 +82,9 @@ export function ScopeEditor({ dealId, scopeId }: { dealId: string; scopeId: stri
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [shareUrl, setShareUrl] = useState("");
+  const [sharePath, setSharePath] = useState("");
+  const [mailTo, setMailTo] = useState("");
+  const mailKey = useRef(crypto.randomUUID());
   const [sendKey] = useState(() => `send-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
   const apply = useCallback((s: Scope) => {
@@ -174,7 +177,19 @@ export function ScopeEditor({ dealId, scopeId }: { dealId: string; scopeId: stri
   const share = () =>
     run("share", async () => {
       const res = await api<{ path: string }>(`/api/scopes/${scopeId}/share`, { method: "POST" });
+      setSharePath(res.path);
       setShareUrl(`${window.location.origin}${res.path}`);
+    });
+
+  const emailLink = () =>
+    run("email", async () => {
+      const sent = await api<{ status: string; lastError: string | null }>("/api/mail/send", {
+        method: "POST",
+        ...jsonBody({ kind: "SCOPE_LINK", to: mailTo, scopeId, path: sharePath, idempotencyKey: mailKey.current }),
+      });
+      if (sent.status !== "SENT") throw new Error(`Not sent yet (${sent.lastError ?? "will retry"}). It stays in the outbox and is retried automatically.`);
+      mailKey.current = crypto.randomUUID();
+      setNotice(`Link emailed to ${mailTo}`);
     });
 
   const revise = () =>
@@ -283,6 +298,25 @@ export function ScopeEditor({ dealId, scopeId }: { dealId: string; scopeId: stri
             <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} className="flex-1 rounded-lg border border-emerald-300 bg-white px-2 py-1 text-xs" />
             <button onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => setNotice("Link copied"))} className="rounded-lg bg-emerald-700 px-3 py-1 text-xs font-medium text-white">
               Copy
+            </button>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              type="email"
+              value={mailTo}
+              onChange={(e) => {
+                setMailTo(e.target.value);
+                mailKey.current = crypto.randomUUID();
+              }}
+              placeholder="Client email"
+              className="flex-1 rounded-lg border border-emerald-300 bg-white px-2 py-1 text-xs"
+            />
+            <button
+              onClick={emailLink}
+              disabled={busy !== "" || mailTo.trim() === ""}
+              className="rounded-lg border border-emerald-700 px-3 py-1 text-xs font-medium text-emerald-800 disabled:opacity-50"
+            >
+              Email this link
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { MailComposer } from "@/components/mail/mail-composer";
 import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { useStaff } from "@/lib/use-staff";
@@ -9,6 +10,7 @@ import { dealStageLabels, openDealStages, type DealStage } from "@/server/models
 
 type Lead = {
   id: string;
+  companyId: string;
   title: string;
   stage: DealStage;
   valuePaise: number;
@@ -57,6 +59,7 @@ export function OutreachBoard() {
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState("");
+  const [emailing, setEmailing] = useState("");
   const [base, setBase] = useState("");
   const { staff, currentUserId } = useStaff();
   const [view, setView] = useState<"all" | "mine" | string>("all");
@@ -160,6 +163,24 @@ export function OutreachBoard() {
                         className="mt-1 block w-full rounded border border-slate-300 px-1 py-1 text-xs text-slate-900"
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setEmailing(emailing === lead.id ? "" : lead.id)}
+                      className="mt-2 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      Email
+                    </button>
+                    {emailing === lead.id ? (
+                      <MailComposer
+                        kind="OUTREACH"
+                        companyId={lead.companyId}
+                        dealId={lead.id}
+                        defaultSubject={`${lead.title}`}
+                        defaultBody={`Hello,\n\nI wanted to follow up on ${lead.title}.\n\nThanks`}
+                        onClose={() => setEmailing("")}
+                        onSent={() => void load()}
+                      />
+                    ) : null}
                   </article>
                 ))}
               </div>

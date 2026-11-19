@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, jsonBody } from "@/lib/api";
+import { MailComposer } from "@/components/mail/mail-composer";
 import { formatDate, isOverdue, type FollowUp } from "@/lib/crm-types";
 
 const dayOnly = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" });
@@ -14,6 +15,7 @@ const dayOnly = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { dat
 export function FollowUpsPanel({ items, onChanged }: { items: FollowUp[]; onChanged?: () => void }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [emailing, setEmailing] = useState("");
 
   async function setLeadDate(item: FollowUp, date: string | null) {
     if (!item.dealId) return;
@@ -54,6 +56,24 @@ export function FollowUpsPanel({ items, onChanged }: { items: FollowUp[]; onChan
                   {item.allDay ? dayOnly(item.nextActionAt) : formatDate(item.nextActionAt)}
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={() => setEmailing(emailing === item.id ? "" : item.id)}
+                className="mt-1 rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                Email
+              </button>
+              {emailing === item.id ? (
+                <MailComposer
+                  kind="FOLLOWUP"
+                  companyId={item.companyId}
+                  dealId={item.dealId}
+                  defaultSubject={`Following up: ${item.nextAction ?? item.companyName}`}
+                  defaultBody={`Hello,\n\nFollowing up on ${item.nextAction ?? "our last conversation"}.\n\nThanks`}
+                  onClose={() => setEmailing("")}
+                  onSent={onChanged}
+                />
+              ) : null}
               {item.kind === "LEAD" ? (
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                   <label className="flex items-center gap-1">

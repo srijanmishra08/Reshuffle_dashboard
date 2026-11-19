@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { MailSettings } from "@/components/mail/mail-settings";
 
 type Settings = {
   legalName: string;
@@ -106,6 +107,7 @@ export function SettingsForm() {
           </div>
         </div>
       )}
+      <MailSettings />
     </DashboardShell>
   );
 }
