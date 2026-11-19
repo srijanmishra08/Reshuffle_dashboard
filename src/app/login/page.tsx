@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { safeNextPath } from "@/lib/safe-next";
@@ -37,6 +38,7 @@ export default function LoginPage() {
         </button>
         {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
         <p className="mt-4 text-xs text-slate-400">Access is limited to emails we have approved. If yours does not work, ask your Reshuffle contact.</p>
+        <p className="mt-2 text-xs text-slate-400"><Link href="/privacy" className="underline">Privacy policy</Link></p>
       </div>
     </main>
   );

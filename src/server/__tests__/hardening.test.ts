@@ -5,13 +5,13 @@ import { assertProductionEnv, missingProductionEnv } from "@/server/env-check";
 
 describe("isPublicPath", () => {
   it("allows public prefixes and their children", () => {
-    for (const p of ["/login", "/api/auth/callback/google", "/api/health", "/api/cron/daily", "/p/abc"]) {
+    for (const p of ["/login", "/privacy", "/api/auth/callback/google", "/api/health", "/api/cron/daily", "/p/abc"]) {
       expect(isPublicPath(p)).toBe(true);
     }
   });
 
   it("does not match look-alike or private paths", () => {
-    for (const p of ["/login-admin", "/api/authx", "/api/healthz", "/api/cronjobs", "/pricing", "/crm", "/"]) {
+    for (const p of ["/login-admin", "/privacyx", "/api/authx", "/api/healthz", "/api/cronjobs", "/pricing", "/crm", "/"]) {
       expect(isPublicPath(p)).toBe(false);
     }
   });
