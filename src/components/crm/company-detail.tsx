@@ -38,6 +38,7 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [openLeads, setOpenLeads] = useState<{ id: string; title: string }[]>([]);
   const [moduleOptions, setModuleOptions] = useState<{ id: string; name: string }[]>([]);
   const [message, setMessage] = useState("Loading...");
   const [loaded, setLoaded] = useState(false);
@@ -49,13 +50,15 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
-    const [c, ct, it, mt] = await Promise.all([
+    const [c, ct, it, mt, hub] = await Promise.all([
       api<Company>(base),
       api<Contact[]>(`${base}/contacts`),
       api<Interaction[]>(`${base}/interactions`),
       api<Meeting[]>(`${base}/meetings`),
+      api<{ deals: { id: string; title: string; stage: string }[] }>(`${base}/hub`),
     ]);
     if (seq !== loadSeq.current) return;
+    setOpenLeads(hub.deals.filter((d) => d.stage !== "WON" && d.stage !== "LOST").map(({ id, title }) => ({ id, title })));
     setCompany(c);
     setContacts(ct);
     setInteractions(it);
@@ -147,6 +150,22 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
                       {entry.i.dealId ? <> · <Link href={`/sales/${entry.i.dealId}`} className="underline">Lead</Link></> : null}
                     </p>
                     <p className="text-slate-900">{entry.i.summary}</p>
+                    {!entry.i.dealId && openLeads.length > 0 ? (
+                      <select
+                        aria-label="Link to a lead"
+                        defaultValue=""
+                        onChange={(e) => {
+                          const dealId = e.target.value;
+                          if (dealId) void run(() => api(`${base}/interactions/${entry.i.id}`, { method: "PATCH", ...jsonBody({ dealId }) }), "Linked to the lead.");
+                        }}
+                        className="mt-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      >
+                        <option value="">Link to a lead...</option>
+                        {openLeads.map((d) => (
+                          <option key={d.id} value={d.id}>{d.title}</option>
+                        ))}
+                      </select>
+                    ) : null}
                     {entry.i.nextAction ? (
                       <p className="text-xs text-slate-500">
                         Next: {entry.i.nextAction} ({formatDate(entry.i.nextActionAt)}
@@ -162,6 +181,22 @@ export function CompanyDetail({ companyId }: { companyId: string }) {
                     </p>
                     <p className="text-slate-900">{entry.m.title}</p>
                     {entry.m.notes ? <p className="text-xs text-slate-500">{entry.m.notes}</p> : null}
+                    {!entry.m.dealId && openLeads.length > 0 ? (
+                      <select
+                        aria-label="Link to a lead"
+                        defaultValue=""
+                        onChange={(e) => {
+                          const dealId = e.target.value;
+                          if (dealId) void run(() => api(`${base}/meetings/${entry.m.id}`, { method: "PATCH", ...jsonBody({ dealId }) }), "Linked to the lead.");
+                        }}
+                        className="mt-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      >
+                        <option value="">Link to a lead...</option>
+                        {openLeads.map((d) => (
+                          <option key={d.id} value={d.id}>{d.title}</option>
+                        ))}
+                      </select>
+                    ) : null}
                   </li>
                 )
               )}

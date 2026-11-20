@@ -4,6 +4,7 @@ import { schema } from "@/server/db/client";
 import {
   interactionInputSchema,
   interactionPatchSchema,
+  dealLinkSchema,
   meetingInputSchema,
 } from "@/lib/schemas/crm";
 import { fail, ok } from "@/server/lib/result";
@@ -195,6 +196,86 @@ export async function setNextActionDone(
   );
 
   return getInteraction(db, ctx, companyId, interactionId);
+}
+
+/** Tie an already-logged touch to one of the client's leads (or untie it with `dealId: null`). */
+export async function setInteractionDeal(
+  db: Db,
+  ctx: ServiceContext,
+  companyId: string,
+  interactionId: string,
+  raw: unknown
+) {
+  const parsed = dealLinkSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail("VALIDATION", "Invalid update", parsed.error.flatten());
+  }
+  const existing = await getInteraction(db, ctx, companyId, interactionId);
+  if (!existing.ok) {
+    return existing;
+  }
+  const { dealId } = parsed.data;
+  if (dealId && !(await dealBelongsTo(db, ctx.orgId, companyId, dealId))) {
+    return fail("VALIDATION", "That lead does not belong to this company");
+  }
+  await db
+    .update(interactions)
+    .set({ dealId, updatedAt: new Date() })
+    .where(and(eq(interactions.id, interactionId), eq(interactions.orgId, ctx.orgId)));
+  await logActivity(
+    {
+      actorId: ctx.userId,
+      action: dealId ? "interaction.linked_to_lead" : "interaction.unlinked_from_lead",
+      module: "crm",
+      entityType: "interaction",
+      entityId: interactionId,
+      metadata: { companyId, dealId },
+    },
+    db
+  );
+  return getInteraction(db, ctx, companyId, interactionId);
+}
+
+/** Tie an already-logged meeting to one of the client's leads (or untie it with `dealId: null`). */
+export async function setMeetingDeal(
+  db: Db,
+  ctx: ServiceContext,
+  companyId: string,
+  meetingId: string,
+  raw: unknown
+) {
+  const parsed = dealLinkSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail("VALIDATION", "Invalid update", parsed.error.flatten());
+  }
+  const all = await listMeetings(db, ctx, companyId);
+  if (!all.ok) {
+    return all;
+  }
+  if (!all.data.some((m) => m.id === meetingId)) {
+    return fail("NOT_FOUND", "Meeting not found");
+  }
+  const { dealId } = parsed.data;
+  if (dealId && !(await dealBelongsTo(db, ctx.orgId, companyId, dealId))) {
+    return fail("VALIDATION", "That lead does not belong to this company");
+  }
+  await db
+    .update(meetings)
+    .set({ dealId, updatedAt: new Date() })
+    .where(and(eq(meetings.id, meetingId), eq(meetings.orgId, ctx.orgId)));
+  await logActivity(
+    {
+      actorId: ctx.userId,
+      action: dealId ? "meeting.linked_to_lead" : "meeting.unlinked_from_lead",
+      module: "crm",
+      entityType: "meeting",
+      entityId: meetingId,
+      metadata: { companyId, dealId },
+    },
+    db
+  );
+  const updated = await listMeetings(db, ctx, companyId);
+  return updated.ok ? ok(updated.data.find((m) => m.id === meetingId)!) : updated;
 }
 
 export type DueFollowUp = {

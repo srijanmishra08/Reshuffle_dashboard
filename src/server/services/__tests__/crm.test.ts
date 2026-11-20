@@ -11,6 +11,8 @@ import {
   listDueFollowUps,
   listInteractions,
   listMeetings,
+  setInteractionDeal,
+  setMeetingDeal,
   setNextActionDone,
 } from "@/server/services/interactions";
 
@@ -174,6 +176,29 @@ describe("calls and meetings tied to a lead", () => {
     // A next action logged on a lead opens that lead from the follow-up list.
     const due = must(await listDueFollowUps(db, ctx, new Date(Date.now() + 2 * 60 * 60 * 1000))).find((f) => f.id === call.id);
     expect(due).toMatchObject({ kind: "TOUCH", dealId: leadA.id, href: `/sales/${leadA.id}` });
+  });
+
+  it("ties an already-logged touch or meeting to a lead afterwards, and refuses another client's lead", async () => {
+    const client = must(await createCompany(db, ctx, { name: "Late Link Co" }));
+    const other = must(await createCompany(db, ctx, { name: "Late Link Other Co" }));
+    const lead = must(await createDeal(db, ctx, { companyId: client.id, title: "Late lead" }));
+    const foreign = must(await createDeal(db, ctx, { companyId: other.id, title: "Late foreign" }));
+    const note = must(await createInteraction(db, ctx, client.id, { type: "CALL", summary: "Before the lead existed" }));
+    const meeting = must(await createMeeting(db, ctx, client.id, { title: "Intro", at: new Date().toISOString() }));
+    expect(note.dealId).toBeNull();
+
+    expect(must(await setInteractionDeal(db, ctx, client.id, note.id, { dealId: lead.id })).dealId).toBe(lead.id);
+    expect(must(await setMeetingDeal(db, ctx, client.id, meeting.id, { dealId: lead.id })).dealId).toBe(lead.id);
+    expect(must(await listInteractions(db, ctx, client.id, lead.id)).map((i) => i.id)).toContain(note.id);
+    expect(must(await listMeetings(db, ctx, client.id, lead.id)).map((m) => m.id)).toContain(meeting.id);
+
+    expect(await setInteractionDeal(db, ctx, client.id, note.id, { dealId: foreign.id })).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(await setMeetingDeal(db, ctx, client.id, meeting.id, { dealId: foreign.id })).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(await setInteractionDeal(db, otherOrg, client.id, note.id, { dealId: lead.id })).toMatchObject({ ok: false });
+    expect(await setMeetingDeal(db, otherOrg, client.id, meeting.id, { dealId: null })).toMatchObject({ ok: false });
+
+    expect(must(await setInteractionDeal(db, ctx, client.id, note.id, { dealId: null })).dealId).toBeNull();
+    expect(must(await setMeetingDeal(db, ctx, client.id, meeting.id, { dealId: null })).dealId).toBeNull();
   });
 });
 
