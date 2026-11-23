@@ -6,6 +6,8 @@ export type Storage = {
   put(bucket: string, path: string, body: Buffer, contentType: string): Promise<void>;
   get(bucket: string, path: string): Promise<Buffer | null>;
   remove(bucket: string, path: string): Promise<void>;
+  /** File names directly under `prefix` (names only, no folders). */
+  list(bucket: string, prefix: string): Promise<string[]>;
 };
 
 function config() {
@@ -36,5 +38,16 @@ export const supabaseStorage: Storage = {
     const { base, headers } = config();
     const res = await fetch(`${base}/storage/v1/object/${bucket}/${path}`, { method: "DELETE", headers });
     if (!res.ok && res.status !== 404) throw new Error(`Storage could not delete the file (${res.status})`);
+  },
+  async list(bucket, prefix) {
+    const { base, headers } = config();
+    const res = await fetch(`${base}/storage/v1/object/list/${bucket}`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ prefix, limit: 1000, sortBy: { column: "name", order: "asc" } }),
+    });
+    if (res.status === 404 || res.status === 400) return [];
+    if (!res.ok) throw new Error(`Storage could not list files (${res.status})`);
+    return ((await res.json()) as { name: string }[]).map((f) => f.name);
   },
 };

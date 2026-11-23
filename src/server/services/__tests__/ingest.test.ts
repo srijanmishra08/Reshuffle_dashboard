@@ -48,6 +48,9 @@ function fakeStorage() {
     async get(bucket, path) {
       return files.get(`${bucket}/${path}`) ?? null;
     },
+    async list(bucket, prefix) {
+      return [...files.keys()].filter((k) => k.startsWith(`${bucket}/${prefix}/`)).map((k) => k.slice(`${bucket}/${prefix}/`.length));
+    },
     async remove(bucket, path) {
       files.delete(`${bucket}/${path}`);
     },
