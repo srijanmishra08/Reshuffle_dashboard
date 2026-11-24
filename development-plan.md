@@ -346,7 +346,7 @@ Do these only after the cutover in Phase 10 has stuck.
 3. Run in parallel for two weeks: all new work goes in the dashboard. Keep a running list of gaps and fix them.
 4. Archive: export Notion again as a final backup and store it outside the repo.
 5. Set up the backup cron (`/api/cron/backup` → Blob, keep 30 days) and test one restore.
-6. Write `docs/RUNBOOK.md`: how to add a user, rotate keys, restore a backup, start a new FY number series, and fix a wrong invoice (credit note).
+6. Write `docs/RUNBOOK.md`: how to add a user, rotate keys, restore a backup, start a new FY number series, and fix a wrong invoice (credit note). **Written 2026-11-24.** The backup cron and a tested restore are still open.
 
 **Done when**
 - [ ] Two weeks pass with no one opening Notion or the old invoice app for daily work.
