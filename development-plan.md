@@ -34,7 +34,7 @@ Phases 0 to 8 are built, merged and deployed. The "done when" boxes inside each 
 | 7. Marketing, events, goals, docs | Built | `/marketing`, `/events`, `/goals`, `/docs`. Asset library not built. |
 | 8. Overview, search, notifications | Built | Real KPIs and feed, global search, notification bell. |
 | 9. Integrations | Partial | Only the invoice software link (PDF upload and next invoice number). No email, WhatsApp, calendar or accounting sync. |
-| 10. Cutover | Not recorded | No record of the two-week parallel run or a tested restore. |
+| 10. Cutover | Partial | Nightly backup cron and `docs/RUNBOOK.md` built (2026-11-25). Still not recorded: the real Notion import, the two-week parallel run and a tested restore. |
 
 Verticals were removed on 2026-11-18 (table, columns, API and screens; migration `0025`). Where the phases below mention verticals, modules (SKUs) took their place.
 

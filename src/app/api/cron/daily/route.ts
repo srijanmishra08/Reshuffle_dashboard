@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/server/db/client";
+import { supabaseBackupStore } from "@/server/lib/storage";
+import { runBackup } from "@/server/services/backup";
 import { markOverdue } from "@/server/services/invoices";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +16,22 @@ function authorised(request: NextRequest): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-/** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. */
+/** Marks overdue invoices and saves the nightly backup. Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. */
 export async function GET(request: NextRequest) {
   if (!authorised(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const overdueMarked = await markOverdue(getDb());
-  return NextResponse.json({ data: { overdueMarked } });
+  const db = getDb();
+  const overdueMarked = await markOverdue(db);
+  // Vercel Hobby allows two cron jobs, so the nightly backup rides on this one. A backup failure is logged
+  // and reported but never undoes the overdue marking.
+  let backup: unknown;
+  try {
+    backup = await runBackup(db, supabaseBackupStore);
+  } catch (error) {
+    console.error("Backup failed", error);
+    backup = { error: "Backup failed" };
+  }
+  return NextResponse.json({ data: { overdueMarked, backup } });
 }

@@ -38,3 +38,37 @@ export const supabaseStorage: Storage = {
     if (!res.ok && res.status !== 404) throw new Error(`Storage could not delete the file (${res.status})`);
   },
 };
+
+/** What the nightly backup needs from storage: a private bucket it can create, write to, list and prune. */
+export type BackupStore = {
+  ensureBucket(bucket: string): Promise<void>;
+  put(bucket: string, path: string, body: Buffer, contentType: string): Promise<void>;
+  list(bucket: string, prefix: string): Promise<string[]>;
+  remove(bucket: string, path: string): Promise<void>;
+};
+
+export const supabaseBackupStore: BackupStore = {
+  put: supabaseStorage.put,
+  remove: supabaseStorage.remove,
+  async ensureBucket(bucket) {
+    const { base, headers } = config();
+    const res = await fetch(`${base}/storage/v1/bucket`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ id: bucket, name: bucket, public: false }),
+    });
+    // 409 (or 400 "already exists") means the bucket is already there.
+    if (!res.ok && res.status !== 409 && res.status !== 400) throw new Error(`Storage could not create the bucket (${res.status})`);
+  },
+  async list(bucket, prefix) {
+    const { base, headers } = config();
+    const res = await fetch(`${base}/storage/v1/object/list/${bucket}`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ prefix, limit: 1000, offset: 0 }),
+    });
+    if (!res.ok) throw new Error(`Storage could not list the bucket (${res.status})`);
+    const rows = (await res.json()) as { name: string }[];
+    return rows.map((r) => r.name);
+  },
+};
