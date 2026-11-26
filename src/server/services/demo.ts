@@ -22,6 +22,7 @@ const {
   deals,
   scopes,
   questionnaires,
+  commissionPayments,
 } = schema;
 
 /** `2026-11-17` plus `n` days. */
@@ -151,6 +152,7 @@ export async function removeDemo(db: Db, actorId: string) {
   await db.delete(projectTasks).where(eq(projectTasks.orgId, DEMO_ORG));
   await db.delete(invoices).where(eq(invoices.orgId, DEMO_ORG));
   await db.delete(scopes).where(eq(scopes.orgId, DEMO_ORG));
+  await db.delete(commissionPayments).where(eq(commissionPayments.orgId, DEMO_ORG));
   await db.delete(deals).where(eq(deals.orgId, DEMO_ORG));
   await db.delete(questionnaires).where(eq(questionnaires.orgId, DEMO_ORG));
   await db.delete(deliveryProjects).where(eq(deliveryProjects.orgId, DEMO_ORG));

@@ -93,6 +93,7 @@ const ADMIN_ONLY_FILES = [
   "/src/app/api/ingest-keys/route.ts",
   "/src/app/api/ingest-keys/[id]/route.ts",
   "/src/app/api/uploaded-documents/[id]/route.ts",
+  "/src/app/api/commission-payments/[id]/route.ts",
 ];
 // Outside people (clients, partner agencies, freelancers) never reach team routes.
 const OUTSIDERS = ["FREELANCER", "CLIENT", "AGENCY"];

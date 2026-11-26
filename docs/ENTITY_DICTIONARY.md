@@ -21,7 +21,7 @@ The real tables live in `src/server/db/schema/*` (one file per area). Money is i
 
 ## How the main records link
 
-- A **sales node** is a sales staff member, freelancer, agency or individual who brings leads, with an optional commission rate (basis points of accepted deal value). A lead is credited to one; `source` and `referrer` on the deal keep its kind and name as text.
+- A **sales node** is a sales staff member, freelancer, agency or individual who brings leads, with an optional commission rate (basis points of accepted deal value). A lead is credited to one; `source` and `referrer` on the deal keep its kind and name as text. A **commission payment** records money paid to a node for one accepted deal (part payments allowed, never more than the commission due) and is also a ledger expense.
 - A lead (**deal**) has an owner (`owner_id`, an active team member) and its own history: interactions and meetings carry `deal_id`, as do questionnaires and event registrations that created or relate to it.
 - A client's modules (SKUs) are stored in `company_modules`. They are edited on the client page or set when adding the client in the CRM, and a lead that is added with modules adds them to its client too (they are never removed automatically, so a lost deal does not take them away). The CRM list, board and client page show them and the list filters by module. Verticals no longer exist (table and columns dropped in migration `0025`); modules are how a client's project is classified.
 - A **company** (client) has contacts, interactions, meetings, deals, delivery projects, invoices, work orders and questionnaires.

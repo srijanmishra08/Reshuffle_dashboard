@@ -106,3 +106,28 @@ export const diagnoses = pgTable(
   },
   (t) => [index("idx_diagnoses_deal").on(t.dealId)]
 ).enableRLS();
+
+/**
+ * Referral commission actually paid to a sales node for one accepted deal. A deal may be paid in parts.
+ * Each payment books an EXPENSE ledger entry (source `COMMISSION`, source id = this row) in the same transaction.
+ */
+export const commissionPayments = pgTable(
+  "commission_payments",
+  {
+    id: text("id").primaryKey().$defaultFn(newId),
+    orgId: text("org_id").notNull().default("default"),
+    salesNodeId: text("sales_node_id")
+      .notNull()
+      .references(() => salesNodes.id),
+    dealId: text("deal_id")
+      .notNull()
+      .references(() => deals.id),
+    amountPaise: integer("amount_paise").notNull(),
+    /** Calendar day, `YYYY-MM-DD`. */
+    paidOn: text("paid_on").notNull(),
+    note: text("note"),
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("idx_commission_payments_node").on(t.orgId, t.salesNodeId), index("idx_commission_payments_deal").on(t.dealId)]
+).enableRLS();

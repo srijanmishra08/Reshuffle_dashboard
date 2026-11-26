@@ -6,6 +6,7 @@ import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { salesNodeKindLabels, salesNodeKindValues, type SalesNodeKind } from "@/server/models/deals";
 import { useStaff } from "@/lib/use-staff";
+import { CommissionPanel } from "@/components/sales/commission-panel";
 
 type Node = {
   id: string;
@@ -26,6 +27,8 @@ type Node = {
   commissionPercent?: number;
   acceptedPaise?: number;
   commissionDuePaise?: number;
+  commissionPaidPaise?: number;
+  commissionOwedPaise?: number;
 };
 type Linkable = { id: string; name: string };
 
@@ -37,10 +40,11 @@ const empty = { name: "", kind: "INDIVIDUAL" as SalesNodeKind, phone: "", email:
  * The people and companies that bring us leads. Each lead is credited to one, so this page shows how many leads
  * each brought and, for managers, the referral commission owed on the deals that were accepted.
  */
-export function SalesNodesManager() {
+export function SalesNodesManager({ isAdmin = false }: { isAdmin?: boolean }) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [commissionFor, setCommissionFor] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
   const [freelancers, setFreelancers] = useState<Linkable[]>([]);
   const [agencies, setAgencies] = useState<Linkable[]>([]);
@@ -186,12 +190,14 @@ export function SalesNodesManager() {
               <th className="px-3 py-2 text-right">Lost</th>
               {showMoney ? <th className="px-3 py-2 text-right">Accepted value</th> : null}
               {showMoney ? <th className="px-3 py-2 text-right">Commission</th> : null}
+              {showMoney ? <th className="px-3 py-2 text-right">Paid</th> : null}
+              {showMoney ? <th className="px-3 py-2 text-right">Owed</th> : null}
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {nodes.length === 0 ? (
-              <tr><td colSpan={showMoney ? 9 : 7} className="px-3 py-6 text-center text-slate-500">No sales nodes yet. Add one above, or pick &quot;New sales node&quot; when adding a lead.</td></tr>
+              <tr><td colSpan={showMoney ? 11 : 7} className="px-3 py-6 text-center text-slate-500">No sales nodes yet. Add one above, or pick &quot;New sales node&quot; when adding a lead.</td></tr>
             ) : null}
             {nodes.map((n) => (
               <tr key={n.id} className={`border-b border-slate-100 last:border-0 ${n.active ? "" : "text-slate-400"}`}>
@@ -207,7 +213,16 @@ export function SalesNodesManager() {
                     {n.commissionPercent ? `${n.commissionPercent}% · ${formatINR(n.commissionDuePaise ?? 0)}` : "—"}
                   </td>
                 ) : null}
+                {showMoney ? <td className="px-3 py-2 text-right">{n.commissionPaidPaise ? formatINR(n.commissionPaidPaise) : "—"}</td> : null}
+                {showMoney ? (
+                  <td className={`px-3 py-2 text-right ${n.commissionOwedPaise ? "font-medium text-amber-700" : ""}`}>{n.commissionOwedPaise ? formatINR(n.commissionOwedPaise) : "—"}</td>
+                ) : null}
                 <td className="whitespace-nowrap px-3 py-2 text-right">
+                  {showMoney && n.accepted > 0 ? (
+                    <button type="button" onClick={() => setCommissionFor(commissionFor === n.id ? null : n.id)} className="mr-3 text-xs font-medium text-slate-700 hover:underline">
+                      {commissionFor === n.id ? "Hide commission" : "Commission"}
+                    </button>
+                  ) : null}
                   <button type="button" onClick={() => startEdit(n)} className="text-xs font-medium text-slate-700 hover:underline">Edit</button>
                   <button type="button" onClick={() => void toggle(n)} className="ml-3 text-xs font-medium text-slate-700 hover:underline">{n.active ? "Switch off" : "Switch on"}</button>
                 </td>
@@ -216,6 +231,9 @@ export function SalesNodesManager() {
           </tbody>
         </table>
       </div>
+      {showMoney && commissionFor ? (
+        <CommissionPanel key={commissionFor} nodeId={commissionFor} isAdmin={isAdmin} onChanged={() => void load()} onClose={() => setCommissionFor(null)} />
+      ) : null}
     </div>
   );
 }
