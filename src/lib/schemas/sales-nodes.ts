@@ -25,3 +25,13 @@ export const salesNodeInputSchema = z.object({
 });
 
 export const salesNodePatchSchema = salesNodeInputSchema.partial();
+
+/** A referral commission paid to a sales node. Amount in paise (int4 column, so one payment tops out near Rs 2.14 crore). */
+export const commissionPaymentInputSchema = z.object({
+  amountPaise: z.number().int().positive().max(2_000_000_000),
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").optional(),
+  /** The accepted deal this payment settles. Optional: a payment can be a lump sum for several deals. */
+  dealId: optionalText(100),
+  reference: optionalText(200),
+  notes: optionalText(2000),
+});

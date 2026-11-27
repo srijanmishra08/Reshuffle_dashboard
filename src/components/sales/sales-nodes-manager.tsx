@@ -6,6 +6,7 @@ import { api, jsonBody } from "@/lib/api";
 import { formatINR } from "@/server/lib/money";
 import { salesNodeKindLabels, salesNodeKindValues, type SalesNodeKind } from "@/server/models/deals";
 import { useStaff } from "@/lib/use-staff";
+import { CommissionPanel } from "@/components/sales/commission-panel";
 
 type Node = {
   id: string;
@@ -26,6 +27,8 @@ type Node = {
   commissionPercent?: number;
   acceptedPaise?: number;
   commissionDuePaise?: number;
+  commissionPaidPaise?: number;
+  commissionOwedPaise?: number;
 };
 type Linkable = { id: string; name: string };
 
@@ -37,10 +40,11 @@ const empty = { name: "", kind: "INDIVIDUAL" as SalesNodeKind, phone: "", email:
  * The people and companies that bring us leads. Each lead is credited to one, so this page shows how many leads
  * each brought and, for managers, the referral commission owed on the deals that were accepted.
  */
-export function SalesNodesManager() {
+export function SalesNodesManager({ isAdmin = false }: { isAdmin?: boolean }) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [paying, setPaying] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
   const [freelancers, setFreelancers] = useState<Linkable[]>([]);
   const [agencies, setAgencies] = useState<Linkable[]>([]);
@@ -174,6 +178,21 @@ export function SalesNodesManager() {
         </div>
       </form>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      {(() => {
+        const n = showMoney && paying ? nodes.find((x) => x.id === paying) : undefined;
+        return n ? (
+          <CommissionPanel
+            key={n.id}
+            nodeId={n.id}
+            nodeName={n.name}
+            commissionPercent={n.commissionPercent ?? 0}
+            owedPaise={n.commissionOwedPaise ?? 0}
+            isAdmin={isAdmin}
+            onChanged={() => void load()}
+            onClose={() => setPaying(null)}
+          />
+        ) : null;
+      })()}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -186,12 +205,14 @@ export function SalesNodesManager() {
               <th className="px-3 py-2 text-right">Lost</th>
               {showMoney ? <th className="px-3 py-2 text-right">Accepted value</th> : null}
               {showMoney ? <th className="px-3 py-2 text-right">Commission</th> : null}
+              {showMoney ? <th className="px-3 py-2 text-right">Paid</th> : null}
+              {showMoney ? <th className="px-3 py-2 text-right">Owed</th> : null}
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {nodes.length === 0 ? (
-              <tr><td colSpan={showMoney ? 9 : 7} className="px-3 py-6 text-center text-slate-500">No sales nodes yet. Add one above, or pick &quot;New sales node&quot; when adding a lead.</td></tr>
+              <tr><td colSpan={showMoney ? 11 : 7} className="px-3 py-6 text-center text-slate-500">No sales nodes yet. Add one above, or pick &quot;New sales node&quot; when adding a lead.</td></tr>
             ) : null}
             {nodes.map((n) => (
               <tr key={n.id} className={`border-b border-slate-100 last:border-0 ${n.active ? "" : "text-slate-400"}`}>
@@ -207,8 +228,17 @@ export function SalesNodesManager() {
                     {n.commissionPercent ? `${n.commissionPercent}% · ${formatINR(n.commissionDuePaise ?? 0)}` : "—"}
                   </td>
                 ) : null}
+                {showMoney ? <td className="px-3 py-2 text-right">{n.commissionPaidPaise ? formatINR(n.commissionPaidPaise) : "—"}</td> : null}
+                {showMoney ? (
+                  <td className={`px-3 py-2 text-right ${(n.commissionOwedPaise ?? 0) > 0 ? "font-medium text-amber-700" : ""}`}>
+                    {(n.commissionOwedPaise ?? 0) === 0 ? "—" : (n.commissionOwedPaise ?? 0) > 0 ? formatINR(n.commissionOwedPaise ?? 0) : `${formatINR(-(n.commissionOwedPaise ?? 0))} ahead`}
+                  </td>
+                ) : null}
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <button type="button" onClick={() => startEdit(n)} className="text-xs font-medium text-slate-700 hover:underline">Edit</button>
+                  {showMoney ? (
+                    <button type="button" onClick={() => setPaying(paying === n.id ? null : n.id)} className="ml-3 text-xs font-medium text-slate-700 hover:underline">Payments</button>
+                  ) : null}
                   <button type="button" onClick={() => void toggle(n)} className="ml-3 text-xs font-medium text-slate-700 hover:underline">{n.active ? "Switch off" : "Switch on"}</button>
                 </td>
               </tr>

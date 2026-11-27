@@ -6,7 +6,7 @@ const createdAt = () => ts("created_at").notNull().defaultNow();
 
 export const ledgerKindValues = ["INCOME", "EXPENSE"] as const;
 export type LedgerKind = (typeof ledgerKindValues)[number];
-export const ledgerSourceValues = ["MANUAL", "PAYMENT", "PAYOUT"] as const;
+export const ledgerSourceValues = ["MANUAL", "PAYMENT", "PAYOUT", "COMMISSION"] as const;
 export type LedgerSource = (typeof ledgerSourceValues)[number];
 
 export const expenseCategories = pgTable(

@@ -106,3 +106,27 @@ export const diagnoses = pgTable(
   },
   (t) => [index("idx_diagnoses_deal").on(t.dealId)]
 ).enableRLS();
+
+/**
+ * Referral commission paid to a sales node. Each payment books an EXPENSE ledger entry (source `COMMISSION`)
+ * in the same transaction. `dealId` is optional: a payment can settle one accepted deal or be a lump sum.
+ */
+export const commissionPayments = pgTable(
+  "commission_payments",
+  {
+    id: text("id").primaryKey().$defaultFn(newId),
+    orgId: text("org_id").notNull().default("default"),
+    salesNodeId: text("sales_node_id")
+      .notNull()
+      .references(() => salesNodes.id),
+    dealId: text("deal_id").references(() => deals.id, { onDelete: "set null" }),
+    amountPaise: integer("amount_paise").notNull(),
+    /** Calendar day, `YYYY-MM-DD`. */
+    paidOn: text("paid_on").notNull(),
+    reference: text("reference"),
+    notes: text("notes"),
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("idx_commission_payments_org_node").on(t.orgId, t.salesNodeId), index("idx_commission_payments_deal").on(t.dealId)]
+).enableRLS();

@@ -7,7 +7,7 @@ export type LedgerRow = {
   amountPaise: number;
   categoryId: string | null;
   description: string;
-  sourceType: "MANUAL" | "PAYMENT" | "PAYOUT";
+  sourceType: "MANUAL" | "PAYMENT" | "PAYOUT" | "COMMISSION";
 };
 
 export type Category = { id: string; name: string };
